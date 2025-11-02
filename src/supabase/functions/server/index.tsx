@@ -149,6 +149,22 @@ app.get("/make-server-e949556f/tmdb/details/:type/:id", async (c) => {
   }
 });
 
+app.get("/make-server-e949556f/tmdb/tv/:id/season/:season", async (c) => {
+  try {
+    const { id, season } = c.req.param();
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/tv/${id}/season/${season}?api_key=${apiKey}`
+    );
+    const data = await response.json();
+    return c.json(data);
+  } catch (error) {
+    console.log(`Error fetching season details: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
 app.get("/make-server-e949556f/tmdb/trending", async (c) => {
   try {
     const type = c.req.query('type') || 'all';
@@ -165,7 +181,148 @@ app.get("/make-server-e949556f/tmdb/trending", async (c) => {
   }
 });
 
-// Personal queue endpoints
+// My Shows (for schedule tracking) endpoints
+app.get("/make-server-e949556f/my-shows", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    return c.json({ shows });
+  } catch (error) {
+    console.log(`Error fetching my shows: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.post("/make-server-e949556f/my-shows", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const show = await c.req.json();
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    
+    // Check if already tracking
+    const exists = shows.find((s: any) => s.id === show.id);
+    if (exists) {
+      return c.json({ error: "Already tracking this show" }, 400);
+    }
+
+    shows.push({ ...show, addedAt: new Date().toISOString() });
+    await kv.set(`myShows:${userId}`, shows);
+
+    return c.json({ shows });
+  } catch (error) {
+    console.log(`Error adding show: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.delete("/make-server-e949556f/my-shows/:id", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { id } = c.req.param();
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    const filteredShows = shows.filter((show: any) => show.id !== parseInt(id));
+    
+    await kv.set(`myShows:${userId}`, filteredShows);
+    return c.json({ shows: filteredShows });
+  } catch (error) {
+    console.log(`Error removing show: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+// Get upcoming episodes for user's shows
+app.get("/make-server-e949556f/schedule", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+    const schedule: any[] = [];
+
+    // For each show, get the latest season info
+    for (const show of shows) {
+      try {
+        const detailsResponse = await fetch(
+          `https://api.themoviedb.org/3/tv/${show.id}?api_key=${apiKey}`
+        );
+        const details = await detailsResponse.json();
+
+        // Get episodes from the latest season
+        if (details.last_episode_to_air || details.next_episode_to_air) {
+          if (details.next_episode_to_air) {
+            schedule.push({
+              showId: show.id,
+              showName: show.name,
+              showPoster: show.poster,
+              episode: details.next_episode_to_air,
+              airDate: details.next_episode_to_air.air_date,
+              type: 'upcoming'
+            });
+          }
+        }
+
+        // Also check recent episodes from current season
+        if (details.last_episode_to_air) {
+          const seasonNum = details.last_episode_to_air.season_number;
+          const seasonResponse = await fetch(
+            `https://api.themoviedb.org/3/tv/${show.id}/season/${seasonNum}?api_key=${apiKey}`
+          );
+          const season = await seasonResponse.json();
+
+          if (season.episodes) {
+            const now = new Date();
+            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+            season.episodes.forEach((episode: any) => {
+              if (episode.air_date) {
+                const airDate = new Date(episode.air_date);
+                if (airDate >= thirtyDaysAgo && airDate <= thirtyDaysFromNow) {
+                  const isUpcoming = airDate > now;
+                  schedule.push({
+                    showId: show.id,
+                    showName: show.name,
+                    showPoster: show.poster,
+                    episode: episode,
+                    airDate: episode.air_date,
+                    type: isUpcoming ? 'upcoming' : 'recent'
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.log(`Error fetching details for show ${show.id}:`, err);
+      }
+    }
+
+    // Sort by air date
+    schedule.sort((a, b) => new Date(a.airDate).getTime() - new Date(b.airDate).getTime());
+
+    return c.json({ schedule });
+  } catch (error) {
+    console.log(`Error fetching schedule: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+// Personal queue endpoints (for discovery/matching)
 app.get("/make-server-e949556f/queue", async (c) => {
   try {
     const userId = await verifyAuth(c.req.raw);

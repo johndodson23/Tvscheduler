@@ -94,21 +94,36 @@ export function ProfileScreen({ onSignOut }: ProfileScreenProps) {
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-2xl">
                 {profile?.name?.[0]?.toUpperCase() || 'U'}
               </div>
-              <div>
+              <div className="flex-1">
                 <div className="text-lg">{profile?.name || 'User'}</div>
                 <div className="text-sm text-gray-500">{profile?.email}</div>
               </div>
             </div>
           </div>
 
+          {/* Tip */}
+          {(!services || services.length === 0) && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">💡</div>
+                <div>
+                  <div className="text-sm mb-1">Quick Tip</div>
+                  <p className="text-sm text-gray-600">
+                    Add your streaming services below to see where shows are available and get better recommendations!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Streaming Services */}
           <div className="bg-white rounded-lg p-4 border border-gray-200">
             <div className="flex items-center gap-2 mb-4">
-              <Tv className="w-5 h-5" />
+              <Tv className="w-5 h-5 text-purple-600" />
               <h2 className="text-lg">My Streaming Services</h2>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Select the services you have access to for personalized recommendations
+              Select your services to filter content and see where things are available
             </p>
             <div className="space-y-3">
               {STREAMING_SERVICES.map((service) => (

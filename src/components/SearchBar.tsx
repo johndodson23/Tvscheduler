@@ -7,9 +7,10 @@ import { ScrollArea } from './ui/scroll-area';
 interface SearchBarProps {
   onSelect: (item: any) => void;
   placeholder?: string;
+  tvOnly?: boolean;
 }
 
-export function SearchBar({ onSelect, placeholder = 'Search movies & TV shows...' }: SearchBarProps) {
+export function SearchBar({ onSelect, placeholder = 'Search movies & TV shows...', tvOnly = false }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,10 +27,13 @@ export function SearchBar({ onSelect, placeholder = 'Search movies & TV shows...
 
     setLoading(true);
     try {
-      const data = await apiCall(`/tmdb/search?query=${encodeURIComponent(searchQuery)}&type=multi`);
-      const filtered = data.results.filter((item: any) => 
-        item.media_type === 'movie' || item.media_type === 'tv'
-      );
+      const searchType = tvOnly ? 'tv' : 'multi';
+      const data = await apiCall(`/tmdb/search?query=${encodeURIComponent(searchQuery)}&type=${searchType}`);
+      const filtered = tvOnly 
+        ? data.results 
+        : data.results.filter((item: any) => 
+            item.media_type === 'movie' || item.media_type === 'tv'
+          );
       setResults(filtered);
       setShowResults(true);
     } catch (error) {
@@ -40,9 +44,10 @@ export function SearchBar({ onSelect, placeholder = 'Search movies & TV shows...
   };
 
   const handleSelect = (item: any) => {
+    const mediaType = tvOnly ? 'tv' : item.media_type;
     onSelect({
       id: item.id,
-      type: item.media_type,
+      type: mediaType,
       title: item.title || item.name,
       poster: item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : null,
       backdrop: item.backdrop_path ? `https://image.tmdb.org/t/p/w500${item.backdrop_path}` : null,
@@ -106,7 +111,7 @@ export function SearchBar({ onSelect, placeholder = 'Search movies & TV shows...
                     <div className="flex-1 min-w-0">
                       <div>{item.title || item.name}</div>
                       <div className="text-sm text-gray-500">
-                        {item.media_type === 'movie' ? 'Movie' : 'TV Show'} • {item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || 'N/A'}
+                        {tvOnly ? 'TV Show' : (item.media_type === 'movie' ? 'Movie' : 'TV Show')} • {item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || 'N/A'}
                       </div>
                     </div>
                   </button>

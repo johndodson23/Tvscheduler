@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { apiCall } from '../utils/api';
 import { SearchBar } from './SearchBar';
+import { ShowDetailModal } from './ShowDetailModal';
+import { StreamingBadges } from './StreamingBadges';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { Trash2, Star, Tv, Film as FilmIcon } from 'lucide-react';
@@ -10,6 +12,7 @@ import { toast } from 'sonner@2.0.3';
 export function QueueScreen() {
   const [queue, setQueue] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailItem, setDetailItem] = useState<any>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [rating, setRating] = useState(0);
 
@@ -87,7 +90,7 @@ export function QueueScreen() {
     <div className="h-full flex flex-col">
       <div className="p-4 border-b border-gray-200 bg-white space-y-3">
         <h1 className="text-2xl">My Queue</h1>
-        <SearchBar onSelect={handleAddToQueue} />
+        <SearchBar onSelect={setDetailItem} />
       </div>
 
       <ScrollArea className="flex-1">
@@ -150,6 +153,19 @@ export function QueueScreen() {
         )}
       </ScrollArea>
 
+      {/* Detail Modal */}
+      {detailItem && (
+        <ShowDetailModal
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+          onConfirmAdd={(itemToAdd) => {
+            handleAddToQueue(itemToAdd);
+            setDetailItem(null);
+          }}
+        />
+      )}
+
+      {/* Rating Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
         <DialogContent>
           <DialogHeader>

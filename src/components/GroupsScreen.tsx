@@ -80,8 +80,10 @@ export function GroupsScreen({ onSelectGroup }: GroupsScreenProps) {
         {groups.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <p>No groups yet</p>
-            <p className="text-sm mt-2">Create a group to start matching with friends</p>
+            <p className="text-lg mb-2">No groups yet</p>
+            <p className="text-sm mt-2 mb-6 max-w-xs mx-auto">
+              Create a group with your partner or friends to swipe together and find shows you all want to watch
+            </p>
             <Button onClick={() => setShowCreateDialog(true)} className="mt-4">
               Create Your First Group
             </Button>

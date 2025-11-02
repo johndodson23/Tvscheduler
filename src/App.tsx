@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { AuthScreen } from './components/AuthScreen';
+import { WelcomeScreen } from './components/WelcomeScreen';
 import { BottomNav } from './components/BottomNav';
-import { FeedScreen } from './components/FeedScreen';
-import { QueueScreen } from './components/QueueScreen';
+import { ScheduleScreen } from './components/ScheduleScreen';
+import { DiscoveryScreen } from './components/DiscoveryScreen';
 import { GroupsScreen } from './components/GroupsScreen';
 import { GroupDetailScreen } from './components/GroupDetailScreen';
 import { ProfileScreen } from './components/ProfileScreen';
@@ -11,8 +12,9 @@ import { Toaster } from './components/ui/sonner';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('feed');
+  const [activeTab, setActiveTab] = useState('schedule');
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
 
   useEffect(() => {
@@ -32,11 +34,22 @@ export default function App() {
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true);
+    // Show welcome screen for new users
+    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome');
+    if (!hasSeenWelcome) {
+      setShowWelcome(true);
+    }
+  };
+
+  const handleWelcomeComplete = () => {
+    localStorage.setItem('hasSeenWelcome', 'true');
+    setShowWelcome(false);
   };
 
   const handleSignOut = () => {
     setIsAuthenticated(false);
-    setActiveTab('feed');
+    setShowWelcome(false);
+    setActiveTab('schedule');
     setSelectedGroup(null);
   };
 
@@ -52,6 +65,10 @@ export default function App() {
     return <AuthScreen onAuthSuccess={handleAuthSuccess} />;
   }
 
+  if (showWelcome) {
+    return <WelcomeScreen onComplete={handleWelcomeComplete} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-lg mx-auto h-screen flex flex-col">
@@ -64,8 +81,8 @@ export default function App() {
             />
           ) : (
             <>
-              {activeTab === 'feed' && <FeedScreen />}
-              {activeTab === 'queue' && <QueueScreen />}
+              {activeTab === 'schedule' && <ScheduleScreen />}
+              {activeTab === 'discover' && <DiscoveryScreen />}
               {activeTab === 'groups' && (
                 <GroupsScreen onSelectGroup={setSelectedGroup} />
               )}

@@ -49,7 +49,7 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           </div>
           <CardTitle className="text-2xl">QueueUp</CardTitle>
           <CardDescription>
-            {isSignUp ? 'Create your account' : 'Sign in to your account'}
+            {isSignUp ? 'Your personalized TV schedule & discovery app' : 'Sign in to your account'}
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { ChevronLeft, Heart, X, Sparkles } from 'lucide-react';
 import { SearchBar } from './SearchBar';
+import { ShowDetailModal } from './ShowDetailModal';
 import { toast } from 'sonner@2.0.3';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -18,11 +19,49 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
   const [matches, setMatches] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [detailItem, setDetailItem] = useState<any>(null);
 
   useEffect(() => {
     loadGroupQueue();
     loadMatches();
+    // Auto-populate with trending if queue is empty
+    loadTrendingIfNeeded();
   }, [group.id]);
+
+  const loadTrendingIfNeeded = async () => {
+    try {
+      const data = await apiCall(`/groups/${group.id}/queue`);
+      if (data.queue.length === 0) {
+        // Add some trending items to get started
+        const trending = await apiCall('/tmdb/trending?type=all');
+        const filtered = trending.results
+          .filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv')
+          .slice(0, 10);
+        
+        for (const item of filtered) {
+          try {
+            await apiCall(`/groups/${group.id}/queue`, {
+              method: 'POST',
+              body: JSON.stringify({
+                id: item.id,
+                type: item.media_type,
+                title: item.title || item.name,
+                poster: item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : null,
+                backdrop: item.backdrop_path ? `https://image.tmdb.org/t/p/w500${item.backdrop_path}` : null,
+                overview: item.overview,
+                releaseDate: item.release_date || item.first_air_date,
+              }),
+            });
+          } catch (err) {
+            console.error('Error adding trending item:', err);
+          }
+        }
+        loadGroupQueue();
+      }
+    } catch (error) {
+      console.error('Error loading trending:', error);
+    }
+  };
 
   const loadGroupQueue = async () => {
     try {
@@ -136,7 +175,7 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
       {view === 'queue' && (
         <div className="flex-1 flex flex-col">
           <div className="p-4 bg-white border-b border-gray-200">
-            <SearchBar onSelect={handleAddToGroupQueue} placeholder="Add to group queue..." />
+            <SearchBar onSelect={setDetailItem} placeholder="Add to group queue..." />
           </div>
           <ScrollArea className="flex-1">
             {queue.length === 0 ? (
@@ -287,6 +326,19 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
             </div>
           )}
         </ScrollArea>
+      )}
+
+      {/* Detail Modal */}
+      {detailItem && (
+        <ShowDetailModal
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+          onConfirmAdd={(itemToAdd) => {
+            handleAddToGroupQueue(itemToAdd);
+            setDetailItem(null);
+          }}
+          actionButtonText="Add to Group Queue"
+        />
       )}
     </div>
   );
