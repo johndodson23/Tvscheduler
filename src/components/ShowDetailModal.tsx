@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { ScrollArea } from './ui/scroll-area';
 import { apiCall } from '../utils/api';
+import { SERVICE_LOGOS } from '../utils/streaming-services';
 import { Film, Tv, Star, Loader2 } from 'lucide-react';
 
 interface ShowDetailModalProps {
@@ -12,18 +13,6 @@ interface ShowDetailModalProps {
   onConfirmAdd: (itemToAdd: any) => void;
   actionButtonText?: string;
 }
-
-const SERVICE_LOGOS: { [key: number]: string } = {
-  8: 'Netflix',
-  119: 'Prime Video',
-  337: 'Disney+',
-  15: 'Hulu',
-  350: 'Apple TV+',
-  1899: 'Max',
-  531: 'Paramount+',
-  387: 'Peacock',
-  384: 'HBO Max',
-};
 
 export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText = 'Add to Queue' }: ShowDetailModalProps) {
   const [details, setDetails] = useState<any>(null);
@@ -70,6 +59,12 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] p-0 overflow-hidden">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{item.title}</DialogTitle>
+          <DialogDescription>
+            Details and information about {item.title}
+          </DialogDescription>
+        </DialogHeader>
         {loading ? (
           <div className="flex items-center justify-center h-96">
             <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
@@ -104,9 +99,9 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
 
             <ScrollArea className="max-h-[calc(90vh-12rem)]">
               <div className="p-6 space-y-4">
-                <DialogHeader>
-                  <DialogTitle className="text-2xl">{item.title}</DialogTitle>
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
+                <div>
+                  <h2 className="text-2xl">{item.title}</h2>
+                  <div className="flex items-center gap-3 text-sm text-gray-500 mt-2">
                     <span>{item.type === 'movie' ? 'Movie' : 'TV Show'}</span>
                     {details?.release_date && (
                       <>
@@ -130,7 +125,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                       </>
                     )}
                   </div>
-                </DialogHeader>
+                </div>
 
                 {/* Overview */}
                 {details?.overview && (

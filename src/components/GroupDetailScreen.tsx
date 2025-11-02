@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { apiCall } from '../utils/api';
 import { Button } from './ui/button';
+import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
-import { ChevronLeft, Heart, X, Sparkles } from 'lucide-react';
+import { ChevronLeft, Heart, X, Sparkles, Tv, Film as FilmIcon } from 'lucide-react';
 import { SearchBar } from './SearchBar';
 import { ShowDetailModal } from './ShowDetailModal';
 import { toast } from 'sonner@2.0.3';
@@ -177,32 +178,44 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
           <div className="p-4 bg-white border-b border-gray-200">
             <SearchBar onSelect={setDetailItem} placeholder="Add to group queue..." />
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 h-0 w-full">
             {queue.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <p>Group queue is empty</p>
                 <p className="text-sm mt-2">Add shows above to start swiping</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100 bg-white">
+              <div className="p-4 space-y-3">
                 {queue.map((item, index) => (
-                  <div key={`${item.type}-${item.id}`} className="p-4 flex gap-3">
-                    {item.poster ? (
-                      <img
-                        src={item.poster}
-                        alt={item.title}
-                        className="w-16 h-24 object-cover rounded"
-                      />
-                    ) : (
-                      <div className="w-16 h-24 bg-gray-200 rounded" />
-                    )}
-                    <div className="flex-1">
-                      <div className="mb-1">{item.title}</div>
-                      <div className="text-sm text-gray-500">
-                        {item.type === 'movie' ? 'Movie' : 'TV Show'}
+                  <Card 
+                    key={`${item.type}-${item.id}`} 
+                    className="p-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => setDetailItem(item)}
+                  >
+                    <div className="flex gap-3">
+                      {item.poster ? (
+                        <img
+                          src={item.poster}
+                          alt={item.title}
+                          className="w-16 h-24 object-cover rounded-lg shadow-sm"
+                        />
+                      ) : (
+                        <div className="w-16 h-24 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center">
+                          {item.type === 'movie' ? (
+                            <FilmIcon className="w-8 h-8 text-purple-400" />
+                          ) : (
+                            <Tv className="w-8 h-8 text-purple-400" />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-1">{item.title}</div>
+                        <div className="text-sm text-gray-500">
+                          {item.type === 'movie' ? 'Movie' : 'TV Show'}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
             )}
@@ -283,7 +296,7 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
       )}
 
       {view === 'matches' && (
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 h-0 w-full">
           {matches.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Sparkles className="w-16 h-16 mx-auto mb-4 text-gray-300" />
@@ -291,36 +304,47 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
               <p className="text-sm mt-2">Swipe on shows to find mutual matches</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100 bg-white">
+            <div className="p-4 space-y-3">
               {matches.map((match) => {
                 // Find the full item details from queue
                 const item = queue.find(q => q.id === match.id && q.type === match.type);
                 if (!item) return null;
 
                 return (
-                  <div key={`${match.type}-${match.id}`} className="p-4 flex gap-3">
-                    {item.poster ? (
-                      <img
-                        src={item.poster}
-                        alt={item.title}
-                        className="w-20 h-30 object-cover rounded"
-                      />
-                    ) : (
-                      <div className="w-20 h-30 bg-gray-200 rounded" />
-                    )}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div>{item.title}</div>
-                        <Sparkles className="w-4 h-4 text-yellow-500" />
-                      </div>
-                      <div className="text-sm text-gray-500 mb-2">
-                        {item.type === 'movie' ? 'Movie' : 'TV Show'}
-                      </div>
-                      <div className="text-xs text-green-600">
-                        Everyone wants to watch this!
+                  <Card 
+                    key={`${match.type}-${match.id}`} 
+                    className="p-4 shadow-md hover:shadow-lg transition-shadow border-2 border-green-200 bg-green-50/30"
+                  >
+                    <div className="flex gap-3">
+                      {item.poster ? (
+                        <img
+                          src={item.poster}
+                          alt={item.title}
+                          className="w-20 h-30 object-cover rounded-lg shadow-sm"
+                        />
+                      ) : (
+                        <div className="w-20 h-30 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg flex items-center justify-center">
+                          {item.type === 'movie' ? (
+                            <FilmIcon className="w-10 h-10 text-green-400" />
+                          ) : (
+                            <Tv className="w-10 h-10 text-green-400" />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div>{item.title}</div>
+                          <Sparkles className="w-4 h-4 text-yellow-500" />
+                        </div>
+                        <div className="text-sm text-gray-500 mb-2">
+                          {item.type === 'movie' ? 'Movie' : 'TV Show'}
+                        </div>
+                        <div className="text-xs text-green-700 bg-green-100 inline-block px-2 py-1 rounded">
+                          Everyone wants to watch this!
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 );
               })}
             </div>

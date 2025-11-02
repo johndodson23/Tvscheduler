@@ -1,22 +1,12 @@
 import { useState, useEffect } from 'react';
 import { apiCall } from '../utils/api';
+import { SERVICE_LOGOS } from '../utils/streaming-services';
 
 interface StreamingBadgesProps {
   itemId: number;
   itemType: 'movie' | 'tv';
   userServices?: number[];
 }
-
-const SERVICE_LOGOS: { [key: number]: string } = {
-  8: 'Netflix',
-  119: 'Prime',
-  337: 'Disney+',
-  15: 'Hulu',
-  350: 'Apple TV+',
-  1899: 'Max',
-  531: 'Paramount+',
-  387: 'Peacock',
-};
 
 export function StreamingBadges({ itemId, itemType, userServices = [] }: StreamingBadgesProps) {
   const [providers, setProviders] = useState<any[]>([]);

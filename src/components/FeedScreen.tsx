@@ -59,7 +59,7 @@ export function FeedScreen() {
         <p className="text-sm text-gray-500 mt-1">See what you've been watching</p>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-0 w-full">
         {feed.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <p>No activity yet</p>

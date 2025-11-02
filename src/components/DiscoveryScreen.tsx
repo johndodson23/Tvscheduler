@@ -215,7 +215,7 @@ export function DiscoveryScreen() {
       )}
 
       {view === 'liked' && (
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 h-0 w-full">
           {liked.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Heart className="w-16 h-16 mx-auto mb-4 text-gray-300" />

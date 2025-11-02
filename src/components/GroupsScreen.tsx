@@ -3,7 +3,7 @@ import { apiCall } from '../utils/api';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Users, Plus, ChevronRight } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { toast } from 'sonner@2.0.3';
@@ -76,7 +76,7 @@ export function GroupsScreen({ onSelectGroup }: GroupsScreenProps) {
         <p className="text-sm text-gray-500">Swipe together to find what to watch</p>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-0 w-full">
         {groups.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
@@ -118,6 +118,9 @@ export function GroupsScreen({ onSelectGroup }: GroupsScreenProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Group</DialogTitle>
+            <DialogDescription>
+              Create a new group to share recommendations with friends
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">

@@ -4,9 +4,10 @@ import { SearchBar } from './SearchBar';
 import { ShowDetailModal } from './ShowDetailModal';
 import { StreamingBadges } from './StreamingBadges';
 import { ScrollArea } from './ui/scroll-area';
+import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Trash2, Star, Tv, Film as FilmIcon } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { toast } from 'sonner@2.0.3';
 
 export function QueueScreen() {
@@ -93,61 +94,73 @@ export function QueueScreen() {
         <SearchBar onSelect={setDetailItem} />
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-0 w-full">
         {queue.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <p>Your queue is empty</p>
             <p className="text-sm mt-2">Search and add movies or TV shows above</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="p-4 space-y-3">
             {queue.map((item) => (
-              <div key={`${item.type}-${item.id}`} className="p-4 flex gap-3">
-                <div className="flex-shrink-0">
-                  {item.poster ? (
-                    <img
-                      src={item.poster}
-                      alt={item.title}
-                      className="w-20 h-30 object-cover rounded"
-                    />
-                  ) : (
-                    <div className="w-20 h-30 bg-gray-200 rounded flex items-center justify-center">
-                      {item.type === 'movie' ? (
-                        <FilmIcon className="w-8 h-8 text-gray-400" />
-                      ) : (
-                        <Tv className="w-8 h-8 text-gray-400" />
-                      )}
+              <Card 
+                key={`${item.type}-${item.id}`} 
+                className="p-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => setDetailItem(item)}
+              >
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0">
+                    {item.poster ? (
+                      <img
+                        src={item.poster}
+                        alt={item.title}
+                        className="w-20 h-30 object-cover rounded-lg shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-20 h-30 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center">
+                        {item.type === 'movie' ? (
+                          <FilmIcon className="w-10 h-10 text-purple-400" />
+                        ) : (
+                          <Tv className="w-10 h-10 text-purple-400" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-1">{item.title}</div>
+                    <div className="text-sm text-gray-500 mb-2">
+                      {item.type === 'movie' ? 'Movie' : 'TV Show'} • {item.releaseDate?.split('-')[0] || 'N/A'}
                     </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="mb-1">{item.title}</div>
-                  <div className="text-sm text-gray-500 mb-2">
-                    {item.type === 'movie' ? 'Movie' : 'TV Show'} • {item.releaseDate?.split('-')[0] || 'N/A'}
+                    {item.overview && (
+                      <p className="text-sm text-gray-600 line-clamp-2 mb-3">{item.overview}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedItem(item);
+                        }}
+                      >
+                        <Star className="w-4 h-4 mr-1" />
+                        Rate
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveFromQueue(item);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
                   </div>
-                  {item.overview && (
-                    <p className="text-sm text-gray-600 line-clamp-2 mb-3">{item.overview}</p>
-                  )}
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedItem(item)}
-                    >
-                      <Star className="w-4 h-4 mr-1" />
-                      Rate
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRemoveFromQueue(item)}
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Remove
-                    </Button>
-                  </div>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
@@ -167,7 +180,7 @@ export function QueueScreen() {
 
       {/* Rating Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Rate {selectedItem?.title}</DialogTitle>
           </DialogHeader>

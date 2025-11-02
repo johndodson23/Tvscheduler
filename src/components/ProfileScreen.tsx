@@ -86,7 +86,7 @@ export function ProfileScreen({ onSignOut }: ProfileScreenProps) {
         <h1 className="text-2xl">Profile</h1>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-0 w-full">
         <div className="p-4 space-y-6">
           {/* User Info */}
           <div className="bg-white rounded-lg p-4 border border-gray-200">

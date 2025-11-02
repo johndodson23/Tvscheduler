@@ -612,4 +612,173 @@ app.post("/make-server-e949556f/rate", async (c) => {
   }
 });
 
+// Episode notification endpoints
+app.get("/make-server-e949556f/episode-notifications/:showId/:season/:episode", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { showId, season, episode } = c.req.param();
+    const key = `notification:${userId}:${showId}:${season}:${episode}`;
+    const notification = await kv.get(key);
+    
+    return c.json({ enabled: notification?.enabled || false });
+  } catch (error) {
+    console.log(`Error fetching episode notification: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.post("/make-server-e949556f/episode-notifications", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { showId, seasonNumber, episodeNumber, episodeName, airDate, enabled } = await c.req.json();
+    const key = `notification:${userId}:${showId}:${seasonNumber}:${episodeNumber}`;
+    
+    if (enabled) {
+      await kv.set(key, {
+        showId,
+        seasonNumber,
+        episodeNumber,
+        episodeName,
+        airDate,
+        enabled: true,
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      await kv.del(key);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.log(`Error saving episode notification: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+// Watch history endpoints
+app.get("/make-server-e949556f/watch-history/:showId/:season/:episode", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { showId, season, episode } = c.req.param();
+    const key = `watchHistory:${userId}:${showId}:${season}:${episode}`;
+    const history = await kv.get(key);
+    
+    return c.json({ 
+      watched: history?.watched || false,
+      rating: history?.rating || 0
+    });
+  } catch (error) {
+    console.log(`Error fetching watch history: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.post("/make-server-e949556f/watch-history", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { showId, seasonNumber, episodeNumber, episodeName, watched, rating } = await c.req.json();
+    const key = `watchHistory:${userId}:${showId}:${seasonNumber}:${episodeNumber}`;
+    
+    await kv.set(key, {
+      showId,
+      seasonNumber,
+      episodeNumber,
+      episodeName,
+      watched,
+      rating,
+      updatedAt: new Date().toISOString()
+    });
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.log(`Error saving watch history: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+// Watch list endpoint - returns all aired episodes from tracked shows
+app.get("/make-server-e949556f/watch-list", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+    const episodes: any[] = [];
+
+    // For each show, get all episodes from tracked seasons
+    for (const show of shows) {
+      try {
+        const detailsResponse = await fetch(
+          `https://api.themoviedb.org/3/tv/${show.id}?api_key=${apiKey}`
+        );
+        const details = await detailsResponse.json();
+
+        // Get episodes from the tracked season or latest season
+        const seasonToFetch = show.selectedSeason || details.number_of_seasons;
+        const seasonResponse = await fetch(
+          `https://api.themoviedb.org/3/tv/${show.id}/season/${seasonToFetch}?api_key=${apiKey}`
+        );
+        const season = await seasonResponse.json();
+
+        if (season.episodes) {
+          const now = new Date();
+          
+          // Only include aired episodes
+          for (const episode of season.episodes) {
+            if (episode.air_date) {
+              const airDate = new Date(episode.air_date);
+              if (airDate <= now) {
+                // Check watch status
+                const watchKey = `watchHistory:${userId}:${show.id}:${episode.season_number}:${episode.episode_number}`;
+                const watchStatus = await kv.get(watchKey);
+                
+                episodes.push({
+                  showId: show.id,
+                  showName: show.name,
+                  showPoster: show.poster,
+                  episode: episode,
+                  watched: watchStatus?.watched || false,
+                  rating: watchStatus?.rating || 0
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.log(`Error fetching episodes for show ${show.id}:`, err);
+      }
+    }
+
+    // Sort by air date (most recent first)
+    episodes.sort((a, b) => {
+      const dateA = new Date(a.episode.air_date);
+      const dateB = new Date(b.episode.air_date);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    return c.json({ episodes });
+  } catch (error) {
+    console.log(`Error fetching watch list: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
 Deno.serve(app.fetch);
