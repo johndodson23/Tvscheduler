@@ -181,6 +181,38 @@ app.get("/make-server-e949556f/tmdb/trending", async (c) => {
   }
 });
 
+app.get("/make-server-e949556f/tmdb/similar/:type/:id", async (c) => {
+  try {
+    const { type, id } = c.req.param();
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/${type}/${id}/similar?api_key=${apiKey}`
+    );
+    const data = await response.json();
+    return c.json(data);
+  } catch (error) {
+    console.log(`Error fetching similar content: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.get("/make-server-e949556f/tmdb/recommendations/:type/:id", async (c) => {
+  try {
+    const { type, id } = c.req.param();
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/${type}/${id}/recommendations?api_key=${apiKey}`
+    );
+    const data = await response.json();
+    return c.json(data);
+  } catch (error) {
+    console.log(`Error fetching recommendations: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
 // My Shows (for schedule tracking) endpoints
 app.get("/make-server-e949556f/my-shows", async (c) => {
   try {
@@ -238,6 +270,93 @@ app.delete("/make-server-e949556f/my-shows/:id", async (c) => {
     return c.json({ shows: filteredShows });
   } catch (error) {
     console.log(`Error removing show: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+// Get detailed show info with progress
+app.get("/make-server-e949556f/my-shows-detailed", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+    const detailedShows = [];
+
+    for (const show of shows) {
+      try {
+        // Get show details from TMDB
+        const detailsResponse = await fetch(
+          `https://api.themoviedb.org/3/tv/${show.id}?api_key=${apiKey}&append_to_response=watch/providers`
+        );
+        const details = await detailsResponse.json();
+
+        // Get season details for the tracked season
+        const seasonNum = show.selectedSeason || details.number_of_seasons;
+        const seasonResponse = await fetch(
+          `https://api.themoviedb.org/3/tv/${show.id}/season/${seasonNum}?api_key=${apiKey}`
+        );
+        const seasonData = await seasonResponse.json();
+
+        // Calculate watch progress
+        let watchedCount = 0;
+        let totalEpisodes = seasonData.episodes?.length || 0;
+        let nextUnwatchedEpisode = null;
+
+        if (seasonData.episodes) {
+          for (const episode of seasonData.episodes) {
+            const watchKey = `watchHistory:${userId}:${show.id}:${seasonNum}:${episode.episode_number}`;
+            const watchStatus = await kv.get(watchKey);
+            
+            if (watchStatus?.watched) {
+              watchedCount++;
+            } else if (!nextUnwatchedEpisode && episode.air_date && new Date(episode.air_date) <= new Date()) {
+              nextUnwatchedEpisode = episode;
+            }
+          }
+        }
+
+        // Get streaming providers
+        const usProviders = details['watch/providers']?.results?.US?.flatrate || [];
+
+        detailedShows.push({
+          ...show,
+          status: details.status,
+          genres: details.genres,
+          nextEpisodeToAir: details.next_episode_to_air,
+          lastEpisodeToAir: details.last_episode_to_air,
+          numberOfSeasons: details.number_of_seasons,
+          providers: usProviders,
+          seasonData: {
+            seasonNumber: seasonNum,
+            episodeCount: totalEpisodes,
+            watchedCount: watchedCount,
+            progress: totalEpisodes > 0 ? (watchedCount / totalEpisodes) * 100 : 0,
+            nextUnwatchedEpisode: nextUnwatchedEpisode
+          }
+        });
+      } catch (err) {
+        console.log(`Error fetching details for show ${show.id}:`, err);
+        // Still include the show with basic info
+        detailedShows.push({
+          ...show,
+          seasonData: {
+            seasonNumber: show.selectedSeason || 1,
+            episodeCount: 0,
+            watchedCount: 0,
+            progress: 0,
+            nextUnwatchedEpisode: null
+          }
+        });
+      }
+    }
+
+    return c.json({ shows: detailedShows });
+  } catch (error) {
+    console.log(`Error fetching detailed shows: ${error}`);
     return c.json({ error: String(error) }, 500);
   }
 });
@@ -588,7 +707,7 @@ app.get("/make-server-e949556f/feed", async (c) => {
   }
 });
 
-// Rating endpoint
+// Rating endpoints
 app.post("/make-server-e949556f/rate", async (c) => {
   try {
     const userId = await verifyAuth(c.req.raw);
@@ -599,15 +718,56 @@ app.post("/make-server-e949556f/rate", async (c) => {
     const { itemId, itemType, rating, item } = await c.req.json();
     const ratingKey = `rating:${userId}:${itemType}:${itemId}`;
     
-    await kv.set(ratingKey, { rating, ratedAt: new Date().toISOString() });
+    await kv.set(ratingKey, { 
+      rating, 
+      itemId, 
+      itemType,
+      ratedAt: new Date().toISOString() 
+    });
 
-    // Add to activity feed
-    const profile = await kv.get(`user:${userId}`);
-    await addActivity(userId, 'rated', { ...item, rating }, profile?.name);
+    // Add to activity feed (only if rating is high enough)
+    if (rating >= 7) {
+      const profile = await kv.get(`user:${userId}`);
+      await addActivity(userId, 'rated', { ...item, rating }, profile?.name);
+    }
 
     return c.json({ success: true });
   } catch (error) {
     console.log(`Error saving rating: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.get("/make-server-e949556f/ratings", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    // Get all ratings for this user
+    const allRatings = await kv.getByPrefix(`rating:${userId}:`);
+    return c.json({ ratings: allRatings || [] });
+  } catch (error) {
+    console.log(`Error fetching ratings: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+app.get("/make-server-e949556f/rating/:type/:id", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { type, id } = c.req.param();
+    const ratingKey = `rating:${userId}:${type}:${id}`;
+    const rating = await kv.get(ratingKey);
+    
+    return c.json({ rating: rating?.rating || null });
+  } catch (error) {
+    console.log(`Error fetching rating: ${error}`);
     return c.json({ error: String(error) }, 500);
   }
 });
@@ -777,6 +937,160 @@ app.get("/make-server-e949556f/watch-list", async (c) => {
     return c.json({ episodes });
   } catch (error) {
     console.log(`Error fetching watch list: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
+// Analytics endpoint
+app.get("/make-server-e949556f/analytics", async (c) => {
+  try {
+    const userId = await verifyAuth(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+    const shows = await kv.get(`myShows:${userId}`) || [];
+    
+    // Get all watch history for this user
+    const watchHistoryKeys = await kv.getByPrefix(`watchHistory:${userId}:`);
+    
+    // Platform analytics
+    const platformStats: { [key: string]: { 
+      episodesWatched: number; 
+      shows: Set<number>;
+      totalRuntime: number;
+      showTitles: string[];
+    } } = {};
+    
+    const showProviders: { [key: number]: any[] } = {};
+    const showDetails: { [key: number]: any } = {};
+    
+    // Get show details and providers
+    for (const show of shows) {
+      try {
+        const detailsResponse = await fetch(
+          `https://api.themoviedb.org/3/tv/${show.id}?api_key=${apiKey}&append_to_response=watch/providers`
+        );
+        const details = await detailsResponse.json();
+        showDetails[show.id] = details;
+        
+        const usProviders = details['watch/providers']?.results?.US?.flatrate || [];
+        showProviders[show.id] = usProviders;
+      } catch (err) {
+        console.log(`Error fetching show ${show.id}:`, err);
+      }
+    }
+    
+    // Analyze watch history
+    for (const historyItem of watchHistoryKeys) {
+      if (historyItem.watched) {
+        const showId = historyItem.showId;
+        const providers = showProviders[showId] || [];
+        const showDetail = showDetails[showId];
+        const showName = shows.find((s: any) => s.id === showId)?.name || 'Unknown';
+        
+        // Estimate runtime (average TV episode is 45 min)
+        const runtime = showDetail?.episode_run_time?.[0] || 45;
+        
+        // Attribute to each provider
+        if (providers.length > 0) {
+          providers.forEach((provider: any) => {
+            const providerName = provider.provider_name;
+            if (!platformStats[providerName]) {
+              platformStats[providerName] = {
+                episodesWatched: 0,
+                shows: new Set<number>(),
+                totalRuntime: 0,
+                showTitles: []
+              };
+            }
+            platformStats[providerName].episodesWatched++;
+            platformStats[providerName].shows.add(showId);
+            platformStats[providerName].totalRuntime += runtime;
+            if (!platformStats[providerName].showTitles.includes(showName)) {
+              platformStats[providerName].showTitles.push(showName);
+            }
+          });
+        }
+      }
+    }
+    
+    // Convert to array and calculate percentages
+    const totalEpisodes = watchHistoryKeys.filter((h: any) => h.watched).length;
+    const totalMinutes = Object.values(platformStats).reduce((sum, stat) => sum + stat.totalRuntime, 0);
+    
+    const platformData = Object.entries(platformStats).map(([name, stats]) => ({
+      name,
+      episodesWatched: stats.episodesWatched,
+      showCount: stats.shows.size,
+      totalMinutes: stats.totalRuntime,
+      totalHours: Math.round(stats.totalRuntime / 60),
+      percentage: totalEpisodes > 0 ? Math.round((stats.episodesWatched / totalEpisodes) * 100) : 0,
+      timePercentage: totalMinutes > 0 ? Math.round((stats.totalRuntime / totalMinutes) * 100) : 0,
+      showTitles: stats.showTitles
+    })).sort((a, b) => b.episodesWatched - a.episodesWatched);
+    
+    // Get top shows
+    const showEpisodeCounts: { [key: number]: number } = {};
+    watchHistoryKeys.forEach((h: any) => {
+      if (h.watched && h.showId) {
+        showEpisodeCounts[h.showId] = (showEpisodeCounts[h.showId] || 0) + 1;
+      }
+    });
+    
+    const topShows = Object.entries(showEpisodeCounts)
+      .map(([showId, count]) => {
+        const show = shows.find((s: any) => s.id === parseInt(showId));
+        const providers = showProviders[parseInt(showId)] || [];
+        return {
+          id: parseInt(showId),
+          name: show?.name || 'Unknown',
+          poster: show?.poster,
+          episodesWatched: count,
+          providers: providers.map((p: any) => p.provider_name)
+        };
+      })
+      .sort((a, b) => b.episodesWatched - a.episodesWatched)
+      .slice(0, 10);
+    
+    // Calculate recommendations for service optimization
+    const recommendations = [];
+    
+    // Find underutilized services (< 10% of watch time)
+    const underutilized = platformData.filter(p => p.timePercentage < 10 && p.timePercentage > 0);
+    if (underutilized.length > 0) {
+      recommendations.push({
+        type: 'remove',
+        platforms: underutilized.map(p => p.name),
+        message: `You watch less than 10% of your content on ${underutilized.map(p => p.name).join(', ')}. Consider removing ${underutilized.length === 1 ? 'this service' : 'these services'} to save money.`,
+        savings: underutilized.length * 10 // Estimate $10/month per service
+      });
+    }
+    
+    // Find primary platform
+    if (platformData.length > 0 && platformData[0].timePercentage > 50) {
+      recommendations.push({
+        type: 'primary',
+        platforms: [platformData[0].name],
+        message: `${platformData[0].name} is your primary streaming service with ${platformData[0].timePercentage}% of your watch time.`
+      });
+    }
+    
+    return c.json({
+      summary: {
+        totalEpisodes,
+        totalMinutes,
+        totalHours: Math.round(totalMinutes / 60),
+        totalShows: shows.length,
+        platformCount: platformData.length
+      },
+      platforms: platformData,
+      topShows,
+      recommendations
+    });
+  } catch (error) {
+    console.log(`Error generating analytics: ${error}`);
     return c.json({ error: String(error) }, 500);
   }
 });

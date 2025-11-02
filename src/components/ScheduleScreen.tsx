@@ -4,6 +4,8 @@ import { SearchBar } from './SearchBar';
 import { ShowDetailModal } from './ShowDetailModal';
 import { ShowOnboardingModal } from './ShowOnboardingModal';
 import { EpisodeDetailModal } from './EpisodeDetailModal';
+import { SimilarShowsRating } from './SimilarShowsRating';
+import { MyShowsTab } from './MyShowsTab';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -13,12 +15,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 export function ScheduleScreen() {
   const [myShows, setMyShows] = useState<any[]>([]);
+  const [myShowsDetailed, setMyShowsDetailed] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<any[]>([]);
   const [watchList, setWatchList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingDetailed, setLoadingDetailed] = useState(false);
   const [activeView, setActiveView] = useState<'schedule' | 'shows' | 'watchlist'>('schedule');
   const [detailItem, setDetailItem] = useState<any>(null);
   const [onboardingItem, setOnboardingItem] = useState<any>(null);
+  const [similarRatingItem, setSimilarRatingItem] = useState<any>(null);
   const [episodeDetail, setEpisodeDetail] = useState<any>(null);
   const [providers, setProviders] = useState<{ [key: number]: any[] }>({});
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -26,6 +31,13 @@ export function ScheduleScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    // Load detailed show info when switching to My Shows tab
+    if (activeView === 'shows' && myShowsDetailed.length === 0 && myShows.length > 0) {
+      loadDetailedShows();
+    }
+  }, [activeView, myShows]);
 
   const loadData = async () => {
     try {
@@ -63,23 +75,167 @@ export function ScheduleScreen() {
     }
   };
 
+  const loadDetailedShows = async () => {
+    setLoadingDetailed(true);
+    try {
+      const data = await apiCall('/my-shows-detailed');
+      setMyShowsDetailed(data.shows);
+    } catch (error) {
+      console.error('Error loading detailed shows:', error);
+      toast.error('Failed to load show details');
+    } finally {
+      setLoadingDetailed(false);
+    }
+  };
+
   const handleAddShow = async (item: any) => {
     try {
-      await apiCall('/my-shows', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: item.id,
-          name: item.title,
-          poster: item.poster,
-          selectedSeason: item.selectedSeason,
-          seasonName: item.seasonName,
-        }),
-      });
-      const seasonText = item.seasonName ? ` (${item.seasonName})` : '';
-      toast.success(`Added to your shows!${seasonText}`);
+      // Handle multi-season configuration
+      if (item.multiSeasonConfig) {
+        const { tracked, watched } = item.multiSeasonConfig;
+        
+        // Show loading toast for multi-season operations
+        const toastId = toast.loading('Adding seasons and updating watch history...');
+        
+        // Collect all unique seasons to add to My Shows
+        const allSeasonNums = new Set([...tracked, ...watched.map(w => w.seasonNumber)]);
+        
+        // Add ALL seasons to My Shows (both tracked and watched)
+        for (const seasonNum of allSeasonNums) {
+          try {
+            await apiCall('/my-shows', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: item.id,
+                name: item.title,
+                poster: item.poster,
+                selectedSeason: seasonNum,
+                seasonName: item.seasonNames?.[seasonNum],
+              }),
+            });
+          } catch (err: any) {
+            console.log(`Error adding season ${seasonNum}:`, err);
+          }
+        }
+        
+        // Mark watched seasons and bulk mark episodes as watched
+        for (const watchedSeason of watched) {
+          try {
+            // Get season details to get all episodes
+            const seasonDetails = await apiCall(`/tmdb/tv/${item.id}/season/${watchedSeason.seasonNumber}`);
+            
+            // Check if this season is in "tracked" too (meaning "both" was selected)
+            const isBothMode = tracked.includes(watchedSeason.seasonNumber);
+            
+            if (isBothMode) {
+              // For "both" mode: Mark episodes that have already aired as watched
+              // Future episodes will show up in schedule automatically
+              const now = new Date();
+              let markedCount = 0;
+              
+              for (const episode of seasonDetails.episodes || []) {
+                // Check if episode has aired
+                const airDate = episode.air_date ? new Date(episode.air_date) : null;
+                
+                if (airDate && airDate <= now) {
+                  // Episode has aired - mark as watched with rating
+                  try {
+                    await apiCall('/watch-history', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        showId: item.id,
+                        seasonNumber: watchedSeason.seasonNumber,
+                        episodeNumber: episode.episode_number,
+                        episodeName: episode.name,
+                        watched: true,
+                        rating: watchedSeason.rating
+                      })
+                    });
+                    markedCount++;
+                  } catch (err) {
+                    console.log(`Error marking episode ${episode.episode_number} as watched:`, err);
+                  }
+                }
+                // Else: Episode hasn't aired yet, will show in schedule
+              }
+              
+              console.log(`Season ${watchedSeason.seasonNumber}: Marked ${markedCount} aired episodes as watched`);
+            } else {
+              // For "watched only" mode: bulk mark ALL episodes as watched
+              for (const episode of seasonDetails.episodes || []) {
+                await apiCall('/watch-history', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    showId: item.id,
+                    seasonNumber: watchedSeason.seasonNumber,
+                    episodeNumber: episode.episode_number,
+                    episodeName: episode.name,
+                    watched: true,
+                    rating: watchedSeason.rating
+                  })
+                });
+              }
+            }
+          } catch (err: any) {
+            console.log(`Error processing season ${watchedSeason.seasonNumber}:`, err);
+          }
+        }
+        
+        const totalSeasons = allSeasonNums.size;
+        const onlyWatchedCount = watched.filter(w => !tracked.includes(w.seasonNumber)).length;
+        const bothCount = watched.filter(w => tracked.includes(w.seasonNumber)).length;
+        
+        let message = `Added ${totalSeasons} season${totalSeasons !== 1 ? 's' : ''}!`;
+        if (onlyWatchedCount > 0) {
+          message += ` Marked ${onlyWatchedCount} as watched.`;
+        }
+        if (bothCount > 0) {
+          message += ` Tracking ${bothCount} active season${bothCount !== 1 ? 's' : ''}.`;
+        }
+        
+        toast.dismiss(toastId);
+        toast.success(message);
+      }
+      // Handle simple multiple seasons (old behavior)
+      else if (item.multipleSeasons && Array.isArray(item.multipleSeasons)) {
+        for (const seasonNum of item.multipleSeasons) {
+          try {
+            await apiCall('/my-shows', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: item.id,
+                name: item.title,
+                poster: item.poster,
+                selectedSeason: seasonNum,
+                seasonName: item.seasonNames?.[seasonNum],
+              }),
+            });
+          } catch (err: any) {
+            // Log but continue with other seasons
+            console.log(`Error adding season ${seasonNum}:`, err);
+          }
+        }
+        toast.success(`Added ${item.multipleSeasons.length} season${item.multipleSeasons.length !== 1 ? 's' : ''} to your shows!`);
+      } else {
+        // Single season add
+        await apiCall('/my-shows', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: item.id,
+            name: item.title,
+            poster: item.poster,
+            selectedSeason: item.selectedSeason,
+            seasonName: item.seasonName,
+          }),
+        });
+        const seasonText = item.seasonName ? ` (${item.seasonName})` : '';
+        toast.success(`Added to your shows!${seasonText}`);
+      }
       loadData();
     } catch (error: any) {
-      toast.error(error.message);
+      // Make sure to dismiss any loading toasts
+      toast.dismiss();
+      toast.error(error.message || 'Error adding show');
       console.error('Error adding show:', error);
     }
   };
@@ -90,10 +246,22 @@ export function ScheduleScreen() {
         method: 'DELETE',
       });
       toast.success('Removed from your shows');
+      // Clear detailed shows so they reload next time
+      setMyShowsDetailed([]);
       loadData();
     } catch (error) {
       console.error('Error removing show:', error);
     }
+  };
+
+  const handleShowDetail = (show: any) => {
+    // Convert show format to match ShowDetailModal expectations
+    setDetailItem({
+      id: show.id,
+      title: show.name,
+      poster: show.poster,
+      type: 'tv'
+    });
   };
 
   const formatDate = (dateString: string) => {
@@ -367,56 +535,25 @@ export function ScheduleScreen() {
         </TabsContent>
 
         <TabsContent value="shows" className="flex-1 mt-0 overflow-hidden h-0">
-          <ScrollArea className="h-full w-full">
-            {myShows.length === 0 ? (
+          {myShows.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
               <div className="p-8 text-center text-gray-500">
                 <Tv className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                 <p>No shows added yet</p>
                 <p className="text-sm mt-2">Search and add TV shows above to start tracking</p>
               </div>
-            ) : (
-              <div className="p-4 space-y-3">
-                {myShows.map((show) => (
-                  <Card key={show.id} className="p-4 shadow-md hover:shadow-lg transition-shadow">
-                    <div className="flex gap-3">
-                      <div className="flex-shrink-0">
-                        {show.poster ? (
-                          <img
-                            src={show.poster}
-                            alt={show.name}
-                            className="w-16 h-24 object-cover rounded-lg shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-16 h-24 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center">
-                            <Tv className="w-8 h-8 text-purple-400" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="mb-1">{show.name}</div>
-                        {show.seasonName && (
-                          <div className="text-sm text-gray-500 mb-2">
-                            Tracking: {show.seasonName}
-                          </div>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveShow(show.id);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
+            </div>
+          ) : loadingDetailed && myShowsDetailed.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-gray-500">Loading show details...</div>
+            </div>
+          ) : (
+            <MyShowsTab 
+              shows={myShowsDetailed.length > 0 ? myShowsDetailed : myShows}
+              onRemove={handleRemoveShow}
+              onShowDetail={handleShowDetail}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -427,9 +564,15 @@ export function ScheduleScreen() {
           onClose={() => setDetailItem(null)}
           onConfirmAdd={(itemToAdd) => {
             setDetailItem(null);
-            // Check if it's a TV show, if so use onboarding flow
+            // Check if it's a TV show
             if (itemToAdd.type === 'tv') {
-              setOnboardingItem(itemToAdd);
+              // If multiple seasons selected, add them directly (user knows what they want)
+              if (itemToAdd.multipleSeasons && itemToAdd.multipleSeasons.length > 0) {
+                handleAddShow(itemToAdd);
+              } else {
+                // Single season - use onboarding flow for better UX
+                setOnboardingItem(itemToAdd);
+              }
             } else {
               // For movies, just add directly
               handleAddShow(itemToAdd);
@@ -445,8 +588,24 @@ export function ScheduleScreen() {
           show={onboardingItem}
           onClose={() => setOnboardingItem(null)}
           onComplete={() => {
+            const completedShow = onboardingItem;
             setOnboardingItem(null);
+            setMyShowsDetailed([]); // Clear to force reload
             loadData();
+            // Show similar shows rating flow
+            setSimilarRatingItem(completedShow);
+          }}
+        />
+      )}
+
+      {/* Similar Shows Rating Modal */}
+      {similarRatingItem && (
+        <SimilarShowsRating
+          show={similarRatingItem}
+          showType={similarRatingItem.type || 'tv'}
+          onClose={() => setSimilarRatingItem(null)}
+          onComplete={() => {
+            setSimilarRatingItem(null);
           }}
         />
       )}

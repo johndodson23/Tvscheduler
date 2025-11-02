@@ -1,4 +1,4 @@
-import { Calendar, Sparkles, Users, User } from 'lucide-react';
+import { Calendar, Sparkles, Users, User, TrendingUp } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: string;
@@ -9,6 +9,7 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   const tabs = [
     { id: 'schedule', icon: Calendar, label: 'Schedule' },
     { id: 'discover', icon: Sparkles, label: 'Discover' },
+    { id: 'insights', icon: TrendingUp, label: 'Insights' },
     { id: 'groups', icon: Users, label: 'Groups' },
     { id: 'profile', icon: User, label: 'Profile' },
   ];

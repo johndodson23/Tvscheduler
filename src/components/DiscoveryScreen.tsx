@@ -13,15 +13,97 @@ export function DiscoveryScreen() {
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<any[]>([]);
   const [view, setView] = useState<'swipe' | 'liked'>('swipe');
+  const [userRatings, setUserRatings] = useState<any[]>([]);
+  const [personalizedQueue, setPersonalizedQueue] = useState<any[]>([]);
 
   useEffect(() => {
-    loadTrending();
+    loadUserPreferences();
     // Load liked items from localStorage
     const savedLiked = localStorage.getItem('likedItems');
     if (savedLiked) {
       setLiked(JSON.parse(savedLiked));
     }
   }, []);
+
+  const loadUserPreferences = async () => {
+    try {
+      // Get user ratings to personalize recommendations
+      const ratingsData = await apiCall('/ratings');
+      setUserRatings(ratingsData.ratings || []);
+      
+      // Load personalized recommendations
+      await loadPersonalizedRecommendations(ratingsData.ratings || []);
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+      // Fallback to trending
+      loadTrending();
+    }
+  };
+
+  const loadPersonalizedRecommendations = async (ratings: any[]) => {
+    try {
+      // If user has ratings, use them to get better recommendations
+      if (ratings.length >= 3) {
+        // Get highly rated items (7+)
+        const highlyRated = ratings
+          .filter((r: any) => r.rating >= 7)
+          .sort((a: any, b: any) => b.rating - a.rating)
+          .slice(0, 5);
+
+        if (highlyRated.length > 0) {
+          // Get recommendations based on highly rated items
+          const recommendationPromises = highlyRated.map(async (rated: any) => {
+            try {
+              const [similarData, recsData] = await Promise.all([
+                apiCall(`/tmdb/similar/${rated.itemType}/${rated.itemId}`),
+                apiCall(`/tmdb/recommendations/${rated.itemType}/${rated.itemId}`)
+              ]);
+              return [...(similarData.results || []), ...(recsData.results || [])];
+            } catch (err) {
+              return [];
+            }
+          });
+
+          const allRecs = await Promise.all(recommendationPromises);
+          const combined = allRecs.flat();
+          
+          // Deduplicate and filter
+          const seen = new Set();
+          const unique = combined.filter((item: any) => {
+            if (seen.has(item.id) || !item.id) return false;
+            seen.add(item.id);
+            return item.media_type === 'movie' || item.media_type === 'tv';
+          });
+
+          // Mix in some trending content
+          const trendingData = await apiCall('/tmdb/trending?type=all');
+          const trendingFiltered = trendingData.results.filter((item: any) => 
+            (item.media_type === 'movie' || item.media_type === 'tv') && !seen.has(item.id)
+          );
+
+          // Combine personalized (70%) with trending (30%)
+          const personalized = [...unique.slice(0, 20), ...trendingFiltered.slice(0, 10)];
+          
+          // Shuffle to mix them
+          const shuffled = personalized.sort(() => Math.random() - 0.5);
+          setTrending(shuffled);
+          setLoading(false);
+          
+          // Show toast to let user know we're personalizing
+          toast.success('Recommendations personalized based on your ratings!', {
+            duration: 3000,
+          });
+          return;
+        }
+      }
+      
+      // Fallback to just trending if not enough ratings
+      loadTrending();
+    } catch (error) {
+      console.error('Error loading personalized recommendations:', error);
+      loadTrending();
+    }
+  };
 
   const loadTrending = async () => {
     try {
@@ -55,18 +137,50 @@ export function DiscoveryScreen() {
       setLiked(newLiked);
       localStorage.setItem('likedItems', JSON.stringify(newLiked));
       
-      // Add to personal queue
+      // Add to personal queue and save implicit rating
       try {
-        await apiCall('/queue', {
-          method: 'POST',
-          body: JSON.stringify({
-            ...likedItem,
-            overview: item.overview,
-            releaseDate: item.release_date || item.first_air_date,
+        await Promise.all([
+          apiCall('/queue', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...likedItem,
+              overview: item.overview,
+              releaseDate: item.release_date || item.first_air_date,
+            }),
           }),
-        });
+          // Save implicit positive rating (7/10 for a right swipe)
+          apiCall('/rate', {
+            method: 'POST',
+            body: JSON.stringify({
+              itemId: item.id,
+              itemType: item.media_type,
+              rating: 7,
+              item: likedItem
+            })
+          })
+        ]);
       } catch (error) {
         console.error('Error adding to queue:', error);
+      }
+    } else if (direction === 'left') {
+      // Save implicit negative rating (3/10 for a left swipe)
+      try {
+        await apiCall('/rate', {
+          method: 'POST',
+          body: JSON.stringify({
+            itemId: item.id,
+            itemType: item.media_type,
+            rating: 3,
+            item: {
+              id: item.id,
+              type: item.media_type,
+              title: item.title || item.name,
+              poster: item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : null,
+            }
+          })
+        });
+      } catch (error) {
+        console.error('Error saving dislike:', error);
       }
     }
 
@@ -93,7 +207,16 @@ export function DiscoveryScreen() {
         <div className="flex items-center justify-between mb-2">
           <div>
             <h1 className="text-2xl">Discovery</h1>
-            <p className="text-sm text-gray-500 mt-1">Swipe to find your next watch</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {userRatings.length >= 3 ? (
+                <span className="flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-purple-600" />
+                  Personalized for you
+                </span>
+              ) : (
+                'Swipe to find your next watch'
+              )}
+            </p>
           </div>
           <Sparkles className="w-6 h-6 text-purple-600" />
         </div>
@@ -129,7 +252,7 @@ export function DiscoveryScreen() {
                 onClick={() => { 
                   setCurrentIndex(0); 
                   setLoading(true);
-                  loadTrending(); 
+                  loadUserPreferences(); 
                 }} 
                 className="mt-4"
                 disabled={loading}

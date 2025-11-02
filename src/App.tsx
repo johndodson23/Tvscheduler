@@ -4,6 +4,7 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { BottomNav } from './components/BottomNav';
 import { ScheduleScreen } from './components/ScheduleScreen';
 import { DiscoveryScreen } from './components/DiscoveryScreen';
+import { InsightsScreen } from './components/InsightsScreen';
 import { GroupsScreen } from './components/GroupsScreen';
 import { GroupDetailScreen } from './components/GroupDetailScreen';
 import { ProfileScreen } from './components/ProfileScreen';
@@ -83,6 +84,7 @@ export default function App() {
             <>
               {activeTab === 'schedule' && <ScheduleScreen />}
               {activeTab === 'discover' && <DiscoveryScreen />}
+              {activeTab === 'insights' && <InsightsScreen />}
               {activeTab === 'groups' && (
                 <GroupsScreen onSelectGroup={setSelectedGroup} />
               )}

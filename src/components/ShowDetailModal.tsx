@@ -3,9 +3,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { ScrollArea } from './ui/scroll-area';
+import { Checkbox } from './ui/checkbox';
+import { MultiSeasonActionModal } from './MultiSeasonActionModal';
 import { apiCall } from '../utils/api';
 import { SERVICE_LOGOS } from '../utils/streaming-services';
-import { Film, Tv, Star, Loader2 } from 'lucide-react';
+import { Film, Tv, Star, Loader2, Calendar, Check, Settings2 } from 'lucide-react';
 
 interface ShowDetailModalProps {
   item: any;
@@ -18,6 +20,9 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
+  const [selectedSeasons, setSelectedSeasons] = useState<number[]>([]);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [showMultiSeasonConfig, setShowMultiSeasonConfig] = useState(false);
 
   useEffect(() => {
     loadDetails();
@@ -32,7 +37,9 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
         // Filter out season 0 (specials) and set to last season
         const regularSeasons = data.seasons.filter((s: any) => s.season_number > 0);
         if (regularSeasons.length > 0) {
-          setSelectedSeason(regularSeasons[regularSeasons.length - 1].season_number);
+          const latestSeasonNumber = regularSeasons[regularSeasons.length - 1].season_number;
+          setSelectedSeason(latestSeasonNumber);
+          setSelectedSeasons([latestSeasonNumber]);
         }
       }
     } catch (error) {
@@ -43,14 +50,65 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
   };
 
   const handleAdd = () => {
+    console.log('handleAdd called:', { multiSelectMode, selectedSeasons });
+    
+    if (multiSelectMode && selectedSeasons.length > 0) {
+      // Show configuration modal for multiple seasons
+      console.log('Opening multi-season config modal for seasons:', selectedSeasons);
+      setShowMultiSeasonConfig(true);
+    } else {
+      // Add single season
+      const itemToAdd = {
+        ...item,
+        selectedSeason: item.type === 'tv' ? selectedSeason : undefined,
+        seasonName: item.type === 'tv' && details?.seasons 
+          ? details.seasons.find((s: any) => s.season_number === selectedSeason)?.name 
+          : undefined,
+      };
+      console.log('Adding single item:', itemToAdd);
+      onConfirmAdd(itemToAdd);
+    }
+  };
+
+  const handleMultiSeasonConfig = (config: {
+    tracked: number[];
+    watched: { seasonNumber: number; rating: number }[];
+  }) => {
+    const seasonNames: { [key: number]: string } = {};
+    [...config.tracked, ...config.watched.map(w => w.seasonNumber)].forEach(seasonNum => {
+      const season = details?.seasons.find((s: any) => s.season_number === seasonNum);
+      if (season) {
+        seasonNames[seasonNum] = season.name;
+      }
+    });
+    
     const itemToAdd = {
       ...item,
-      selectedSeason: item.type === 'tv' ? selectedSeason : undefined,
-      seasonName: item.type === 'tv' && details?.seasons 
-        ? details.seasons.find((s: any) => s.season_number === selectedSeason)?.name 
-        : undefined,
+      multiSeasonConfig: config,
+      seasonNames: seasonNames,
     };
     onConfirmAdd(itemToAdd);
+  };
+
+  const toggleSeasonSelection = (seasonNumber: number) => {
+    setSelectedSeasons(prev => 
+      prev.includes(seasonNumber)
+        ? prev.filter(s => s !== seasonNumber)
+        : [...prev, seasonNumber]
+    );
+  };
+
+  const isSeasonCurrent = (season: any) => {
+    if (!details) return false;
+    
+    // Check if this is the latest season with upcoming episodes
+    const regularSeasons = details.seasons?.filter((s: any) => s.season_number > 0) || [];
+    const latestSeason = regularSeasons[regularSeasons.length - 1];
+    
+    return (
+      season.season_number === latestSeason?.season_number &&
+      (details.status === 'Returning Series' || details.next_episode_to_air)
+    );
   };
 
   const providers = details?.['watch/providers']?.results?.US?.flatrate || [];
@@ -58,7 +116,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-lg h-[90vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>{item.title}</DialogTitle>
           <DialogDescription>
@@ -72,7 +130,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
         ) : (
           <>
             {/* Backdrop/Poster */}
-            <div className="relative h-48 bg-gradient-to-br from-purple-500 to-pink-500">
+            <div className="relative h-48 bg-gradient-to-br from-purple-500 to-pink-500 flex-shrink-0">
               {details?.backdrop_path ? (
                 <img
                   src={`https://image.tmdb.org/t/p/w780${details.backdrop_path}`}
@@ -97,7 +155,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             </div>
 
-            <ScrollArea className="max-h-[calc(90vh-12rem)]">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="p-6 space-y-4">
                 <div>
                   <h2 className="text-2xl">{item.title}</h2>
@@ -126,6 +184,17 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                     )}
                   </div>
                 </div>
+
+                {/* Quick Tips for TV Shows */}
+                {item.type === 'tv' && details?.seasons && details.seasons.filter((s: any) => s.season_number > 0).length > 1 && !multiSelectMode && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <div className="text-blue-700 text-xs leading-relaxed">
+                        <strong>💡 Pro Tip:</strong> Want to add multiple seasons at once (like seasons you've already watched)? Use "Select Multiple" below to configure watch status and ratings for each season.
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Overview */}
                 {details?.overview && (
@@ -165,30 +234,169 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                 {/* Season Selector for TV Shows */}
                 {item.type === 'tv' && details?.seasons && details.seasons.length > 0 && (
                   <div>
-                    <h3 className="text-sm mb-2">Select Season</h3>
-                    <Select
-                      value={selectedSeason.toString()}
-                      onValueChange={(value) => setSelectedSeason(parseInt(value))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {details.seasons
-                          .filter((season: any) => season.season_number > 0)
-                          .map((season: any) => (
-                            <SelectItem
-                              key={season.season_number}
-                              value={season.season_number.toString()}
-                            >
-                              {season.name} ({season.episode_count} episodes)
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 mt-2">
-                      You can add other seasons later
-                    </p>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="text-sm">Select Season{multiSelectMode ? 's' : ''}</h3>
+                        {!multiSelectMode && details.seasons.filter((s: any) => s.season_number > 0).length > 1 && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            💡 Want to add multiple? Click "Select Multiple" →
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant={multiSelectMode ? 'default' : 'outline'}
+                        size="sm"
+                        className={multiSelectMode ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                        onClick={() => {
+                          setMultiSelectMode(!multiSelectMode);
+                          if (!multiSelectMode) {
+                            // Entering multi-select mode - keep current selection
+                            if (!selectedSeasons.includes(selectedSeason)) {
+                              setSelectedSeasons([selectedSeason]);
+                            }
+                          } else {
+                            // Exiting multi-select mode - use first selected or default
+                            if (selectedSeasons.length > 0) {
+                              setSelectedSeason(selectedSeasons[0]);
+                            }
+                          }
+                        }}
+                      >
+                        {multiSelectMode ? 'Single Select' : 'Select Multiple'}
+                      </Button>
+                    </div>
+
+                    {!multiSelectMode ? (
+                      <>
+                        <Select
+                          value={selectedSeason.toString()}
+                          onValueChange={(value) => {
+                            const num = parseInt(value);
+                            setSelectedSeason(num);
+                            setSelectedSeasons([num]);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {details.seasons
+                              .filter((season: any) => season.season_number > 0)
+                              .map((season: any) => {
+                                const isCurrent = isSeasonCurrent(season);
+                                return (
+                                  <SelectItem
+                                    key={season.season_number}
+                                    value={season.season_number.toString()}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span>{season.name} ({season.episode_count} episodes)</span>
+                                      {isCurrent && (
+                                        <Calendar className="w-3 h-3 text-green-600" />
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                          </SelectContent>
+                        </Select>
+                        {isSeasonCurrent(details.seasons.find((s: any) => s.season_number === selectedSeason)) && (
+                          <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            Current season - new episodes will be tracked
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                          {details.seasons
+                            .filter((season: any) => season.season_number > 0)
+                            .map((season: any) => {
+                              const isCurrent = isSeasonCurrent(season);
+                              const isSelected = selectedSeasons.includes(season.season_number);
+                              
+                              return (
+                                <button
+                                  key={season.season_number}
+                                  onClick={() => toggleSeasonSelection(season.season_number)}
+                                  className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                                    isSelected
+                                      ? 'border-purple-500 bg-purple-50'
+                                      : 'border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm">{season.name}</span>
+                                        {isCurrent && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                                            <Calendar className="w-3 h-3" />
+                                            Active
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-0.5">
+                                        {season.episode_count} episode{season.episode_count !== 1 ? 's' : ''}
+                                        {isCurrent && ' • New episodes tracked'}
+                                        {!isCurrent && season.air_date && ` • Aired ${new Date(season.air_date).getFullYear()}`}
+                                      </div>
+                                    </div>
+                                    {isSelected && (
+                                      <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center ml-2">
+                                        <Check className="w-3 h-3 text-white" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                        
+                        {/* Next Step Indicator */}
+                        {selectedSeasons.length > 0 && (
+                          <div className="mt-3 p-4 bg-gradient-to-r from-purple-100 to-pink-100 border-2 border-purple-400 rounded-lg shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Check className="w-4 h-4 text-purple-700" />
+                                  <span className="text-sm text-purple-900">
+                                    {selectedSeasons.length} season{selectedSeasons.length !== 1 ? 's' : ''} selected
+                                  </span>
+                                </div>
+                                <div className="text-xs text-purple-700 mb-2">
+                                  Click "Configure" below to set ratings & watch status
+                                </div>
+                                {/* Preview of selected seasons */}
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedSeasons.slice(0, 5).map(num => {
+                                    const season = details.seasons.find((s: any) => s.season_number === num);
+                                    return (
+                                      <span key={num} className="inline-block px-2 py-0.5 bg-white/80 text-purple-800 text-[10px] rounded-full border border-purple-300">
+                                        S{num}
+                                      </span>
+                                    );
+                                  })}
+                                  {selectedSeasons.length > 5 && (
+                                    <span className="inline-block px-2 py-0.5 bg-white/80 text-purple-800 text-[10px] rounded-full border border-purple-300">
+                                      +{selectedSeasons.length - 5}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <Settings2 className="w-6 h-6 text-purple-600 flex-shrink-0" />
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    
+                    {!multiSelectMode && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        You can add other seasons later
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -239,20 +447,73 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
               </div>
             </ScrollArea>
 
-            {/* Footer with Add Button */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
+            {/* Footer with Add Button - ALWAYS VISIBLE */}
+            <div className={`p-4 border-t-2 flex-shrink-0 ${
+              item.type === 'tv' && multiSelectMode && selectedSeasons.length > 0 
+                ? 'border-purple-400 bg-gradient-to-r from-purple-50 to-pink-50' 
+                : 'border-gray-200 bg-gray-50'
+            }`}>
+              {item.type === 'tv' && multiSelectMode && selectedSeasons.length > 0 && (
+                <div className="mb-3 p-2 bg-white/80 rounded border border-purple-200">
+                  <div className="text-xs text-purple-900">
+                    <strong>Next Step:</strong> Click the button below to:
+                  </div>
+                  <ul className="text-xs text-purple-700 mt-1 ml-4 space-y-0.5">
+                    <li>• Set ratings for each season (1-10 scale)</li>
+                    <li>• Mark which seasons you've already watched</li>
+                    <li>• Choose which seasons to track for new episodes</li>
+                  </ul>
+                </div>
+              )}
               <div className="flex gap-3">
                 <Button variant="outline" onClick={onClose} className="flex-1">
                   Cancel
                 </Button>
-                <Button onClick={handleAdd} className="flex-1">
-                  {actionButtonText}
+                <Button 
+                  onClick={handleAdd} 
+                  className={`flex-1 gap-2 transition-all ${
+                    item.type === 'tv' && multiSelectMode && selectedSeasons.length > 0
+                      ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg'
+                      : ''
+                  }`}
+                  disabled={item.type === 'tv' && multiSelectMode && selectedSeasons.length === 0}
+                  size={item.type === 'tv' && multiSelectMode && selectedSeasons.length > 0 ? 'lg' : 'default'}
+                >
+                  {item.type === 'tv' && multiSelectMode && selectedSeasons.length > 0 ? (
+                    <>
+                      <Settings2 className="w-5 h-5" />
+                      Configure {selectedSeasons.length} Season{selectedSeasons.length !== 1 ? 's' : ''}
+                    </>
+                  ) : (
+                    actionButtonText
+                  )}
                 </Button>
               </div>
             </div>
           </>
         )}
       </DialogContent>
+
+      {/* Multi-Season Configuration Modal */}
+      {showMultiSeasonConfig && (
+        <MultiSeasonActionModal
+          show={item}
+          selectedSeasons={selectedSeasons.map(num => {
+            const season = details?.seasons.find((s: any) => s.season_number === num);
+            return {
+              ...season,
+              isCurrent: isSeasonCurrent(season)
+            };
+          })}
+          onClose={() => setShowMultiSeasonConfig(false)}
+          onConfirm={(config) => {
+            console.log('Config confirmed, closing modal and processing...');
+            setShowMultiSeasonConfig(false);
+            onClose(); // Close the detail modal
+            handleMultiSeasonConfig(config);
+          }}
+        />
+      )}
     </Dialog>
   );
 }
