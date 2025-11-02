@@ -1,7 +1,8 @@
 
   {
-      "name": "Confirm TMDB API Capabilities",
-      "version": "0.1.0",
+      "name": "tv-scheduler",
+      "version": "1.0.0",
+      "description": "TV Show Scheduler & Recommendation App",
       "private": true,
       "dependencies": {
           "@jsr/supabase__supabase-js": "^2.49.8",
@@ -58,6 +59,8 @@
       },
       "scripts": {
           "dev": "vite",
-          "build": "vite build"
+          "build": "vite build",
+          "preview": "vite preview",
+          "lint": "tsc --noEmit"
       }
   }
