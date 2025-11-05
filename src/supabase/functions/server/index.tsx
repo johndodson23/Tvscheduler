@@ -213,6 +213,22 @@ app.get("/make-server-e949556f/tmdb/recommendations/:type/:id", async (c) => {
   }
 });
 
+app.get("/make-server-e949556f/tmdb/watch-providers/:type/:id", async (c) => {
+  try {
+    const { type, id } = c.req.param();
+    const apiKey = Deno.env.get('TMDB_API_KEY');
+
+    const response = await fetch(
+      `https://api.themoviedb.org/3/${type}/${id}/watch/providers?api_key=${apiKey}`
+    );
+    const data = await response.json();
+    return c.json(data);
+  } catch (error) {
+    console.log(`Error fetching watch providers: ${error}`);
+    return c.json({ error: String(error) }, 500);
+  }
+});
+
 // My Shows (for schedule tracking) endpoints
 app.get("/make-server-e949556f/my-shows", async (c) => {
   try {
@@ -482,7 +498,8 @@ app.post("/make-server-e949556f/queue", async (c) => {
     // Check if already in queue
     const exists = queue.find((q: any) => q.id === item.id && q.type === item.type);
     if (exists) {
-      return c.json({ error: "Already in queue" }, 400);
+      // Item already exists, return success without adding again
+      return c.json({ queue, alreadyExists: true });
     }
 
     queue.push({ ...item, addedAt: new Date().toISOString() });
@@ -492,7 +509,7 @@ app.post("/make-server-e949556f/queue", async (c) => {
     const profile = await kv.get(`user:${userId}`);
     await addActivity(userId, 'added', item, profile?.name);
 
-    return c.json({ queue });
+    return c.json({ queue, alreadyExists: false });
   } catch (error) {
     console.log(`Error adding to queue: ${error}`);
     return c.json({ error: String(error) }, 500);
@@ -596,9 +613,10 @@ app.post("/make-server-e949556f/groups/:groupId/queue", async (c) => {
     if (!exists) {
       queue.push({ ...item, addedBy: userId, addedAt: new Date().toISOString() });
       await kv.set(queueKey, queue);
+      return c.json({ queue, alreadyExists: false });
     }
 
-    return c.json({ queue });
+    return c.json({ queue, alreadyExists: true });
   } catch (error) {
     console.log(`Error adding to group queue: ${error}`);
     return c.json({ error: String(error) }, 500);
@@ -630,7 +648,7 @@ app.post("/make-server-e949556f/groups/:groupId/swipe", async (c) => {
     }
 
     const { groupId } = c.req.param();
-    const { itemId, itemType, direction, ratingType, watchedStatus } = await c.req.json();
+    const { itemId, itemType, direction, ratingType, watchedStatus, streamingService } = await c.req.json();
     
     const swipeKey = `${groupId}:swipes:${itemType}:${itemId}`;
     const swipes = await kv.get(swipeKey) || { 
@@ -658,6 +676,7 @@ app.post("/make-server-e949556f/groups/:groupId/swipe", async (c) => {
     swipes.userDetails[userId] = {
       ratingType: finalRatingType,
       watchedStatus: watchedStatus || 'not_seen',
+      streamingService: streamingService || null,
       swipedAt: new Date().toISOString()
     };
     
@@ -753,7 +772,7 @@ app.post("/make-server-e949556f/rate", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const { itemId, itemType, rating, ratingType, watchedStatus, item } = await c.req.json();
+    const { itemId, itemType, rating, ratingType, watchedStatus, streamingService, item } = await c.req.json();
     const ratingKey = `rating:${userId}:${itemType}:${itemId}`;
     
     // Support both old number-based ratings and new Netflix-style ratings
@@ -764,6 +783,7 @@ app.post("/make-server-e949556f/rate", async (c) => {
       rating: rating || 0, // Keep numeric rating for backward compatibility
       ratingType: finalRatingType,
       watchedStatus: finalWatchedStatus,
+      streamingService: streamingService || null,
       itemId, 
       itemType,
       ratedAt: new Date().toISOString() 

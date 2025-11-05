@@ -34,11 +34,15 @@ export function QueueScreen() {
 
   const handleAddToQueue = async (item: any) => {
     try {
-      await apiCall('/queue', {
+      const result = await apiCall('/queue', {
         method: 'POST',
         body: JSON.stringify(item),
       });
-      toast.success('Added to your queue!');
+      if (result.alreadyExists) {
+        toast.info('Already in your queue');
+      } else {
+        toast.success('Added to your queue!');
+      }
       loadQueue();
     } catch (error: any) {
       toast.error(error.message);

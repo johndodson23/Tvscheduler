@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { apiCall } from '../utils/api';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
-import { ThumbsDown, ThumbsUp, Sparkles, Film, Tv, RefreshCw, Eye, Clock } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, Sparkles, Film, Tv, RefreshCw, Eye, Clock, Check, X, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner@2.0.3';
+import { getServiceInfo } from '../utils/streaming-services';
 
 export function DiscoveryScreen() {
   const [trending, setTrending] = useState<any[]>([]);
@@ -16,15 +17,56 @@ export function DiscoveryScreen() {
   const [userRatings, setUserRatings] = useState<any[]>([]);
   const [personalizedQueue, setPersonalizedQueue] = useState<any[]>([]);
   const [watchedStatus, setWatchedStatus] = useState<'watched' | 'not_seen' | 'want_to_watch'>('not_seen');
+  const [streamingProviders, setStreamingProviders] = useState<any[]>([]);
+  const [selectedStreamingService, setSelectedStreamingService] = useState<number | null>(null);
+  const [userStreamingServices, setUserStreamingServices] = useState<number[]>([]);
+  const [showStreamingConfirm, setShowStreamingConfirm] = useState(false);
+  const [showStreamingDropdown, setShowStreamingDropdown] = useState(false);
+  const [suggestedService, setSuggestedService] = useState<number | null>(null);
 
   useEffect(() => {
     loadUserPreferences();
+    loadUserProfile();
     // Load liked items from localStorage
     const savedLiked = localStorage.getItem('likedItems');
     if (savedLiked) {
       setLiked(JSON.parse(savedLiked));
     }
   }, []);
+
+  useEffect(() => {
+    // Load streaming providers when current item changes
+    if (trending[currentIndex]) {
+      loadStreamingProviders();
+    }
+  }, [currentIndex, trending]);
+
+  const loadUserProfile = async () => {
+    try {
+      const data = await apiCall('/profile');
+      setUserStreamingServices(data.profile?.services || []);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
+
+  const loadStreamingProviders = async () => {
+    const item = trending[currentIndex];
+    if (!item) return;
+    
+    try {
+      const data = await apiCall(`/tmdb/watch-providers/${item.media_type}/${item.id}`);
+      const usProviders = data.results?.US;
+      if (usProviders?.flatrate) {
+        setStreamingProviders(usProviders.flatrate);
+      } else {
+        setStreamingProviders([]);
+      }
+    } catch (error) {
+      console.error('Error loading streaming providers:', error);
+      setStreamingProviders([]);
+    }
+  };
 
   const loadUserPreferences = async () => {
     try {
@@ -121,6 +163,45 @@ export function DiscoveryScreen() {
     }
   };
 
+  const handleWatchedStatusChange = (status: 'watched' | 'not_seen' | 'want_to_watch') => {
+    setWatchedStatus(status);
+    
+    if (status === 'watched') {
+      // Check if user has any of the available streaming services
+      const matchingServices = streamingProviders.filter((provider: any) => 
+        userStreamingServices.includes(provider.provider_id)
+      );
+      
+      if (matchingServices.length > 0) {
+        // Suggest the first matching service
+        setSuggestedService(matchingServices[0].provider_id);
+        setShowStreamingConfirm(true);
+      } else if (streamingProviders.length > 0) {
+        // No matching services, show dropdown
+        setShowStreamingDropdown(true);
+      } else {
+        // No streaming providers available
+        setSelectedStreamingService(null);
+      }
+    } else {
+      // Reset streaming service selection for other statuses
+      setSelectedStreamingService(null);
+      setShowStreamingConfirm(false);
+      setShowStreamingDropdown(false);
+      setSuggestedService(null);
+    }
+  };
+
+  const handleStreamingConfirmYes = () => {
+    setSelectedStreamingService(suggestedService);
+    setShowStreamingConfirm(false);
+  };
+
+  const handleStreamingConfirmNo = () => {
+    setShowStreamingConfirm(false);
+    setShowStreamingDropdown(true);
+  };
+
   const handleSwipe = async (ratingType: 'thumbs_down' | 'thumbs_up' | 'two_thumbs_up') => {
     if (currentIndex >= trending.length) return;
 
@@ -150,8 +231,11 @@ export function DiscoveryScreen() {
               overview: item.overview,
               releaseDate: item.release_date || item.first_air_date,
             }),
+          }).catch((err) => {
+            // Silently handle "already in queue" - not an error
+            console.log('Queue add result:', err.message);
           }),
-          // Save rating with Netflix-style rating type
+          // Save rating with Netflix-style rating type and streaming service
           apiCall('/rate', {
             method: 'POST',
             body: JSON.stringify({
@@ -159,12 +243,13 @@ export function DiscoveryScreen() {
               itemType: item.media_type,
               ratingType: ratingType,
               watchedStatus: watchedStatus,
+              streamingService: selectedStreamingService,
               item: itemData
             })
           })
         ]);
       } catch (error) {
-        console.error('Error adding to queue:', error);
+        console.error('Error saving rating:', error);
       }
     } else {
       // Thumbs down - just save the rating
@@ -176,6 +261,7 @@ export function DiscoveryScreen() {
             itemType: item.media_type,
             ratingType: ratingType,
             watchedStatus: watchedStatus,
+            streamingService: selectedStreamingService,
             item: itemData
           })
         });
@@ -188,8 +274,12 @@ export function DiscoveryScreen() {
     setTimeout(() => {
       setCurrentIndex(currentIndex + 1);
       setSwipeDirection(null);
-      // Reset watched status to default after each swipe
+      // Reset watched status and streaming service to default after each swipe
       setWatchedStatus('not_seen');
+      setSelectedStreamingService(null);
+      setShowStreamingConfirm(false);
+      setShowStreamingDropdown(false);
+      setSuggestedService(null);
     }, 300);
   };
 
@@ -318,18 +408,28 @@ export function DiscoveryScreen() {
                 {/* Watched Status Toggle */}
                 <div className="flex justify-center gap-2 bg-white rounded-lg p-2 shadow-sm">
                   <button
-                    onClick={() => setWatchedStatus('watched')}
+                    onClick={() => handleWatchedStatusChange('watched')}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
                       watchedStatus === 'watched'
-                        ? 'bg-purple-100 text-purple-700'
+                        ? selectedStreamingService 
+                          ? '' 
+                          : 'bg-purple-100 text-purple-700'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
+                    style={
+                      watchedStatus === 'watched' && selectedStreamingService
+                        ? {
+                            backgroundColor: getServiceInfo(selectedStreamingService)?.color || 'rgb(168, 85, 247)',
+                            color: getServiceInfo(selectedStreamingService)?.textColor || 'rgb(255, 255, 255)',
+                          }
+                        : undefined
+                    }
                   >
                     <Eye className="w-4 h-4" />
                     <span className="text-sm">Watched</span>
                   </button>
                   <button
-                    onClick={() => setWatchedStatus('not_seen')}
+                    onClick={() => handleWatchedStatusChange('not_seen')}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
                       watchedStatus === 'not_seen'
                         ? 'bg-purple-100 text-purple-700'
@@ -340,7 +440,7 @@ export function DiscoveryScreen() {
                     <span className="text-sm">Not Seen</span>
                   </button>
                   <button
-                    onClick={() => setWatchedStatus('want_to_watch')}
+                    onClick={() => handleWatchedStatusChange('want_to_watch')}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
                       watchedStatus === 'want_to_watch'
                         ? 'bg-purple-100 text-purple-700'
@@ -351,6 +451,58 @@ export function DiscoveryScreen() {
                     <span className="text-sm">Want to Watch</span>
                   </button>
                 </div>
+
+                {/* Streaming Service Confirmation */}
+                {showStreamingConfirm && suggestedService && (
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <p className="text-sm text-gray-700 mb-3">
+                      Did you watch this on <span className="font-semibold">{getServiceInfo(suggestedService)?.name}</span>?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleStreamingConfirmYes}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span className="text-sm">Yes</span>
+                      </button>
+                      <button
+                        onClick={handleStreamingConfirmNo}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                        <span className="text-sm">No</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Streaming Service Dropdown */}
+                {showStreamingDropdown && streamingProviders.length > 0 && (
+                  <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                    <label className="text-sm text-gray-700 mb-2 block">
+                      Where did you watch it?
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={selectedStreamingService || ''}
+                        onChange={(e) => {
+                          setSelectedStreamingService(Number(e.target.value) || null);
+                          setShowStreamingDropdown(false);
+                        }}
+                        className="w-full px-4 py-2 pr-10 rounded-md border border-gray-300 bg-white text-sm appearance-none cursor-pointer hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        <option value="">Select a service...</option>
+                        {streamingProviders.map((provider: any) => (
+                          <option key={provider.provider_id} value={provider.provider_id}>
+                            {getServiceInfo(provider.provider_id)?.name || provider.provider_name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                )}
 
                 {/* Rating Buttons */}
                 <div className="flex justify-center gap-4">
