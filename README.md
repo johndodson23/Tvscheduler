@@ -1,7 +1,7 @@
 
-  # Confirm TMDB API Capabilities
+  # TV scheduler
 
-  This is a code bundle for Confirm TMDB API Capabilities. The original project is available at https://www.figma.com/design/Aanvj72UKAPrcDZTKByoOS/Confirm-TMDB-API-Capabilities.
+  This is a code bundle for TV scheduler. The original project is available at https://www.figma.com/design/Aanvj72UKAPrcDZTKByoOS/TV-scheduler.
 
   ## Running the code
 

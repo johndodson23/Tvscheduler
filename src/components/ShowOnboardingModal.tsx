@@ -67,8 +67,8 @@ export function ShowOnboardingModal({ show, onClose, onComplete }: ShowOnboardin
 
   const addShowWithSeason = async (seasonNumber: number) => {
     try {
-      const seasonData = details.seasons.find((s: any) => s.season_number === seasonNumber);
-      await apiCall('/my-shows', {
+      const seasonData = details?.seasons?.find((s: any) => s.season_number === seasonNumber);
+      const result = await apiCall('/my-shows', {
         method: 'POST',
         body: JSON.stringify({
           id: show.id,
@@ -79,7 +79,12 @@ export function ShowOnboardingModal({ show, onClose, onComplete }: ShowOnboardin
           seasonName: seasonData?.name,
         }),
       });
-      toast.success(`${show.title} added to your shows!`);
+      
+      if (result.alreadyExists) {
+        toast.info(`${show.title} is already in your shows!`);
+      } else {
+        toast.success(`${show.title} added to your shows!`);
+      }
       onComplete();
     } catch (error: any) {
       console.error('Error adding show:', error);
@@ -136,7 +141,7 @@ export function ShowOnboardingModal({ show, onClose, onComplete }: ShowOnboardin
     try {
       // Add show to my-shows with all seasons
       for (const seasonNumber of selectedSeasons) {
-        const seasonData = details.seasons.find((s: any) => s.season_number === seasonNumber);
+        const seasonData = details?.seasons?.find((s: any) => s.season_number === seasonNumber);
         try {
           await apiCall('/my-shows', {
             method: 'POST',
@@ -229,6 +234,10 @@ export function ShowOnboardingModal({ show, onClose, onComplete }: ShowOnboardin
     return (
       <Dialog open={true} onOpenChange={onClose}>
         <DialogContent className="max-w-md">
+          <div className="sr-only">
+            <DialogTitle>Setting up show</DialogTitle>
+            <DialogDescription>Loading show details and configuring {show.title}</DialogDescription>
+          </div>
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 className="w-12 h-12 animate-spin text-purple-600 mb-4" />
             <p className="text-gray-600">Setting up {show.title}...</p>
@@ -242,6 +251,10 @@ export function ShowOnboardingModal({ show, onClose, onComplete }: ShowOnboardin
     return (
       <Dialog open={true} onOpenChange={onClose}>
         <DialogContent className="max-w-md">
+          <div className="sr-only">
+            <DialogTitle>Adding show</DialogTitle>
+            <DialogDescription>Adding {show.title} to your shows</DialogDescription>
+          </div>
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 className="w-12 h-12 animate-spin text-purple-600 mb-4" />
             <p className="text-gray-600">Adding to your shows...</p>
@@ -377,7 +390,7 @@ export function ShowOnboardingModal({ show, onClose, onComplete }: ShowOnboardin
           <ScrollArea className="max-h-[60vh] px-6">
             <div className="space-y-4 py-4">
               {selectedSeasons.map((seasonNumber) => {
-                const season = details.seasons.find((s: any) => s.season_number === seasonNumber);
+                const season = details?.seasons?.find((s: any) => s.season_number === seasonNumber);
                 const rating = seasonRatings[seasonNumber];
                 
                 return (

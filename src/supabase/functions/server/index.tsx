@@ -239,10 +239,22 @@ app.post("/make-server-e949556f/my-shows", async (c) => {
     const show = await c.req.json();
     const shows = await kv.get(`myShows:${userId}`) || [];
     
-    // Check if already tracking
-    const exists = shows.find((s: any) => s.id === show.id);
+    // Check if already tracking this specific show + season combination
+    // If selectedSeason is provided, check for exact match (id + selectedSeason)
+    // Otherwise, just check for id match (for backwards compatibility)
+    const exists = shows.find((s: any) => {
+      if (show.selectedSeason !== undefined) {
+        // Check both id and season
+        return s.id === show.id && s.selectedSeason === show.selectedSeason;
+      } else {
+        // Just check id (for shows added without season specification)
+        return s.id === show.id && s.selectedSeason === undefined;
+      }
+    });
+    
     if (exists) {
-      return c.json({ error: "Already tracking this show" }, 400);
+      // Return success if already exists instead of error (idempotent operation)
+      return c.json({ shows, alreadyExists: true });
     }
 
     shows.push({ ...show, addedAt: new Date().toISOString() });
@@ -618,32 +630,58 @@ app.post("/make-server-e949556f/groups/:groupId/swipe", async (c) => {
     }
 
     const { groupId } = c.req.param();
-    const { itemId, itemType, direction } = await c.req.json();
+    const { itemId, itemType, direction, ratingType, watchedStatus } = await c.req.json();
     
     const swipeKey = `${groupId}:swipes:${itemType}:${itemId}`;
-    const swipes = await kv.get(swipeKey) || { likes: [], passes: [] };
+    const swipes = await kv.get(swipeKey) || { 
+      likes: [], 
+      passes: [],
+      userDetails: {} // Store rating type and watched status per user
+    };
     
-    if (direction === 'right') {
-      if (!swipes.likes.includes(userId)) {
-        swipes.likes.push(userId);
-      }
+    // Support both old direction-based and new rating type-based swipes
+    const finalRatingType = ratingType || (direction === 'right' ? 'thumbs_up' : 'thumbs_down');
+    const isPositive = finalRatingType === 'thumbs_up' || finalRatingType === 'two_thumbs_up';
+    
+    // Remove user from both lists first
+    swipes.likes = swipes.likes.filter((id: string) => id !== userId);
+    swipes.passes = swipes.passes.filter((id: string) => id !== userId);
+    
+    if (isPositive) {
+      swipes.likes.push(userId);
     } else {
-      if (!swipes.passes.includes(userId)) {
-        swipes.passes.push(userId);
-      }
+      swipes.passes.push(userId);
     }
+    
+    // Store user's rating details
+    if (!swipes.userDetails) swipes.userDetails = {};
+    swipes.userDetails[userId] = {
+      ratingType: finalRatingType,
+      watchedStatus: watchedStatus || 'not_seen',
+      swipedAt: new Date().toISOString()
+    };
     
     await kv.set(swipeKey, swipes);
 
-    // Check if it's a match
+    // Check if it's a match (all members gave thumbs up or two thumbs up)
     const group = await kv.get(groupId);
     const isMatch = group.members.every((memberId: string) => swipes.likes.includes(memberId));
     
     if (isMatch) {
       const matchesKey = `${groupId}:matches`;
       const matches = await kv.get(matchesKey) || [];
-      matches.push({ id: itemId, type: itemType, matchedAt: new Date().toISOString() });
-      await kv.set(matchesKey, matches);
+      
+      // Don't add duplicate matches
+      const existingMatch = matches.find((m: any) => m.id === itemId && m.type === itemType);
+      if (!existingMatch) {
+        matches.push({ 
+          id: itemId, 
+          type: itemType, 
+          matchedAt: new Date().toISOString(),
+          userDetails: swipes.userDetails
+        });
+        await kv.set(matchesKey, matches);
+      }
       
       return c.json({ swipes, match: true });
     }
@@ -715,20 +753,26 @@ app.post("/make-server-e949556f/rate", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const { itemId, itemType, rating, item } = await c.req.json();
+    const { itemId, itemType, rating, ratingType, watchedStatus, item } = await c.req.json();
     const ratingKey = `rating:${userId}:${itemType}:${itemId}`;
     
+    // Support both old number-based ratings and new Netflix-style ratings
+    const finalRatingType = ratingType || (rating >= 7 ? 'thumbs_up' : rating >= 4 ? 'neutral' : 'thumbs_down');
+    const finalWatchedStatus = watchedStatus || 'not_seen'; // Default to not_seen for backward compatibility
+    
     await kv.set(ratingKey, { 
-      rating, 
+      rating: rating || 0, // Keep numeric rating for backward compatibility
+      ratingType: finalRatingType,
+      watchedStatus: finalWatchedStatus,
       itemId, 
       itemType,
       ratedAt: new Date().toISOString() 
     });
 
-    // Add to activity feed (only if rating is high enough)
-    if (rating >= 7) {
+    // Add to activity feed (only if rating is positive)
+    if (finalRatingType === 'thumbs_up' || finalRatingType === 'two_thumbs_up' || rating >= 7) {
       const profile = await kv.get(`user:${userId}`);
-      await addActivity(userId, 'rated', { ...item, rating }, profile?.name);
+      await addActivity(userId, 'rated', { ...item, ratingType: finalRatingType }, profile?.name);
     }
 
     return c.json({ success: true });

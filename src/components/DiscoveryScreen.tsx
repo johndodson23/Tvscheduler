@@ -2,19 +2,20 @@ import { useState, useEffect } from 'react';
 import { apiCall } from '../utils/api';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
-import { Heart, X, Sparkles, Film, Tv, RefreshCw } from 'lucide-react';
+import { ThumbsDown, ThumbsUp, Sparkles, Film, Tv, RefreshCw, Eye, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner@2.0.3';
 
 export function DiscoveryScreen() {
   const [trending, setTrending] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<'thumbs_down' | 'thumbs_up' | 'two_thumbs_up' | null>(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<any[]>([]);
   const [view, setView] = useState<'swipe' | 'liked'>('swipe');
   const [userRatings, setUserRatings] = useState<any[]>([]);
   const [personalizedQueue, setPersonalizedQueue] = useState<any[]>([]);
+  const [watchedStatus, setWatchedStatus] = useState<'watched' | 'not_seen' | 'want_to_watch'>('not_seen');
 
   useEffect(() => {
     loadUserPreferences();
@@ -33,9 +34,10 @@ export function DiscoveryScreen() {
       
       // Load personalized recommendations
       await loadPersonalizedRecommendations(ratingsData.ratings || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading user preferences:', error);
-      // Fallback to trending
+      // Fallback to trending on any error
+      setLoading(true);
       loadTrending();
     }
   };
@@ -119,68 +121,66 @@ export function DiscoveryScreen() {
     }
   };
 
-  const handleSwipe = async (direction: 'left' | 'right') => {
+  const handleSwipe = async (ratingType: 'thumbs_down' | 'thumbs_up' | 'two_thumbs_up') => {
     if (currentIndex >= trending.length) return;
 
     const item = trending[currentIndex];
-    setSwipeDirection(direction);
+    setSwipeDirection(ratingType);
 
-    if (direction === 'right') {
-      const likedItem = {
-        id: item.id,
-        type: item.media_type,
-        title: item.title || item.name,
-        poster: item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : null,
-        backdrop: item.backdrop_path ? `https://image.tmdb.org/t/p/w500${item.backdrop_path}` : null,
-      };
-      const newLiked = [...liked, likedItem];
+    const itemData = {
+      id: item.id,
+      type: item.media_type,
+      title: item.title || item.name,
+      poster: item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : null,
+      backdrop: item.backdrop_path ? `https://image.tmdb.org/t/p/w500${item.backdrop_path}` : null,
+    };
+
+    // Handle thumbs up and two thumbs up - add to queue and liked list
+    if (ratingType === 'thumbs_up' || ratingType === 'two_thumbs_up') {
+      const newLiked = [...liked, itemData];
       setLiked(newLiked);
       localStorage.setItem('likedItems', JSON.stringify(newLiked));
       
-      // Add to personal queue and save implicit rating
       try {
         await Promise.all([
           apiCall('/queue', {
             method: 'POST',
             body: JSON.stringify({
-              ...likedItem,
+              ...itemData,
               overview: item.overview,
               releaseDate: item.release_date || item.first_air_date,
             }),
           }),
-          // Save implicit positive rating (7/10 for a right swipe)
+          // Save rating with Netflix-style rating type
           apiCall('/rate', {
             method: 'POST',
             body: JSON.stringify({
               itemId: item.id,
               itemType: item.media_type,
-              rating: 7,
-              item: likedItem
+              ratingType: ratingType,
+              watchedStatus: watchedStatus,
+              item: itemData
             })
           })
         ]);
       } catch (error) {
         console.error('Error adding to queue:', error);
       }
-    } else if (direction === 'left') {
-      // Save implicit negative rating (3/10 for a left swipe)
+    } else {
+      // Thumbs down - just save the rating
       try {
         await apiCall('/rate', {
           method: 'POST',
           body: JSON.stringify({
             itemId: item.id,
             itemType: item.media_type,
-            rating: 3,
-            item: {
-              id: item.id,
-              type: item.media_type,
-              title: item.title || item.name,
-              poster: item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : null,
-            }
+            ratingType: ratingType,
+            watchedStatus: watchedStatus,
+            item: itemData
           })
         });
       } catch (error) {
-        console.error('Error saving dislike:', error);
+        console.error('Error saving rating:', error);
       }
     }
 
@@ -188,6 +188,8 @@ export function DiscoveryScreen() {
     setTimeout(() => {
       setCurrentIndex(currentIndex + 1);
       setSwipeDirection(null);
+      // Reset watched status to default after each swipe
+      setWatchedStatus('not_seen');
     }, 300);
   };
 
@@ -272,8 +274,8 @@ export function DiscoveryScreen() {
                       animate={{
                         scale: 1,
                         opacity: 1,
-                        x: swipeDirection === 'left' ? -300 : swipeDirection === 'right' ? 300 : 0,
-                        rotate: swipeDirection === 'left' ? -20 : swipeDirection === 'right' ? 20 : 0,
+                        x: swipeDirection === 'thumbs_down' ? -300 : (swipeDirection === 'thumbs_up' || swipeDirection === 'two_thumbs_up') ? 300 : 0,
+                        rotate: swipeDirection === 'thumbs_down' ? -20 : (swipeDirection === 'thumbs_up' || swipeDirection === 'two_thumbs_up') ? 20 : 0,
                       }}
                       transition={{ duration: 0.3 }}
                       className="bg-white rounded-xl shadow-xl overflow-hidden"
@@ -312,21 +314,78 @@ export function DiscoveryScreen() {
                 </AnimatePresence>
               </div>
 
-              <div className="flex justify-center gap-6">
-                <button
-                  onClick={() => handleSwipe('left')}
-                  disabled={!!swipeDirection}
-                  className="w-16 h-16 rounded-full bg-white border-2 border-red-500 text-red-500 flex items-center justify-center shadow-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                >
-                  <X className="w-8 h-8" />
-                </button>
-                <button
-                  onClick={() => handleSwipe('right')}
-                  disabled={!!swipeDirection}
-                  className="w-16 h-16 rounded-full bg-white border-2 border-green-500 text-green-500 flex items-center justify-center shadow-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-                >
-                  <Heart className="w-8 h-8" />
-                </button>
+              <div className="space-y-4">
+                {/* Watched Status Toggle */}
+                <div className="flex justify-center gap-2 bg-white rounded-lg p-2 shadow-sm">
+                  <button
+                    onClick={() => setWatchedStatus('watched')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                      watchedStatus === 'watched'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span className="text-sm">Watched</span>
+                  </button>
+                  <button
+                    onClick={() => setWatchedStatus('not_seen')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                      watchedStatus === 'not_seen'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-sm">Not Seen</span>
+                  </button>
+                  <button
+                    onClick={() => setWatchedStatus('want_to_watch')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                      watchedStatus === 'want_to_watch'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm">Want to Watch</span>
+                  </button>
+                </div>
+
+                {/* Rating Buttons */}
+                <div className="flex justify-center gap-4">
+                  <button
+                    onClick={() => handleSwipe('thumbs_down')}
+                    disabled={!!swipeDirection}
+                    className="w-16 h-16 rounded-full bg-white border-2 border-red-500 text-red-500 flex items-center justify-center shadow-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                  >
+                    <ThumbsDown className="w-7 h-7" />
+                  </button>
+                  <button
+                    onClick={() => handleSwipe('thumbs_up')}
+                    disabled={!!swipeDirection}
+                    className="w-16 h-16 rounded-full bg-white border-2 border-green-500 text-green-500 flex items-center justify-center shadow-lg hover:bg-green-50 transition-colors disabled:opacity-50"
+                  >
+                    <ThumbsUp className="w-7 h-7" />
+                  </button>
+                  <button
+                    onClick={() => handleSwipe('two_thumbs_up')}
+                    disabled={!!swipeDirection}
+                    className="w-20 h-16 rounded-full bg-white border-2 border-purple-600 text-purple-600 flex items-center justify-center shadow-lg hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  >
+                    <div className="flex gap-0.5">
+                      <ThumbsUp className="w-6 h-6" />
+                      <ThumbsUp className="w-6 h-6" />
+                    </div>
+                  </button>
+                </div>
+
+                {/* Button Labels */}
+                <div className="flex justify-center gap-4 text-xs text-gray-600">
+                  <div className="w-16 text-center">Not for me</div>
+                  <div className="w-16 text-center">I like this</div>
+                  <div className="w-20 text-center">Love this!</div>
+                </div>
               </div>
 
               <div className="text-center mt-6 text-sm text-gray-500">

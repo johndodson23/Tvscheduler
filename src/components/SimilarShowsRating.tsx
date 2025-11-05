@@ -4,8 +4,7 @@ import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
-import { Slider } from './ui/slider';
-import { Star, ThumbsUp, ThumbsDown, Sparkles, X, Check, Loader2, Film, Tv } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Sparkles, X, Check, Loader2, Film, Tv } from 'lucide-react';
 import { apiCall } from '../utils/api';
 import { toast } from 'sonner@2.0.3';
 
@@ -24,6 +23,7 @@ interface RatingOption {
   releaseYear?: string;
   genres?: any[];
   rating: number | null; // 1-10 scale, null = haven't seen
+  ratingType: 'thumbs_down' | 'thumbs_up' | 'two_thumbs_up' | null;
   hasWatched: boolean | null; // null = not answered yet
 }
 
@@ -66,6 +66,7 @@ export function SimilarShowsRating({ show, showType, onClose, onComplete }: Simi
               releaseYear: (item.release_date || item.first_air_date || '').substring(0, 4),
               genres: details.genres?.slice(0, 3) || [],
               rating: null,
+              ratingType: null,
               hasWatched: null
             };
           } catch (err) {
@@ -89,20 +90,25 @@ export function SimilarShowsRating({ show, showType, onClose, onComplete }: Simi
     updatedItems[currentIndex].hasWatched = hasWatched;
     
     if (!hasWatched) {
-      // If not watched, set rating to 0 and move to next
+      // If not watched, default to want_to_watch and move to next
       updatedItems[currentIndex].rating = 0;
+      updatedItems[currentIndex].ratingType = null;
       setSimilarItems(updatedItems);
       moveToNext();
     } else {
-      // If watched, show rating interface
-      updatedItems[currentIndex].rating = 5; // Default to middle rating
+      // If watched, show rating interface with thumbs up as default
+      updatedItems[currentIndex].ratingType = 'thumbs_up';
+      updatedItems[currentIndex].rating = 6; // For backward compatibility
       setSimilarItems(updatedItems);
     }
   };
 
-  const handleRatingChange = (rating: number) => {
+  const handleRatingTypeChange = (ratingType: 'thumbs_down' | 'thumbs_up' | 'two_thumbs_up') => {
     const updatedItems = [...similarItems];
-    updatedItems[currentIndex].rating = rating;
+    updatedItems[currentIndex].ratingType = ratingType;
+    // Set numeric rating for backward compatibility
+    const ratingMap = { thumbs_down: 3, thumbs_up: 7, two_thumbs_up: 9 };
+    updatedItems[currentIndex].rating = ratingMap[ratingType];
     setSimilarItems(updatedItems);
   };
 
@@ -129,6 +135,8 @@ export function SimilarShowsRating({ show, showType, onClose, onComplete }: Simi
               itemId: item.id,
               itemType: item.type,
               rating: item.rating,
+              ratingType: item.ratingType || 'thumbs_up',
+              watchedStatus: item.hasWatched ? 'watched' : 'want_to_watch',
               item: {
                 id: item.id,
                 type: item.type,
@@ -159,6 +167,10 @@ export function SimilarShowsRating({ show, showType, onClose, onComplete }: Simi
     return (
       <Dialog open onOpenChange={onClose}>
         <DialogContent className="max-w-lg">
+          <div className="sr-only">
+            <DialogTitle>Loading similar shows</DialogTitle>
+            <DialogDescription>Finding shows you might like</DialogDescription>
+          </div>
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
           </div>
@@ -278,51 +290,35 @@ export function SimilarShowsRating({ show, showType, onClose, onComplete }: Simi
                       <div>
                         <p className="text-sm text-gray-600 mb-3">How would you rate it?</p>
                         
-                        {/* Quick rating buttons */}
-                        <div className="grid grid-cols-3 gap-2 mb-3">
+                        {/* Netflix-style rating buttons */}
+                        <div className="grid grid-cols-3 gap-2">
                           <Button
-                            variant={currentItem.rating && currentItem.rating <= 4 ? 'default' : 'outline'}
+                            variant={currentItem.ratingType === 'thumbs_down' ? 'default' : 'outline'}
                             className="flex-col h-auto py-3"
-                            onClick={() => handleRatingChange(3)}
+                            onClick={() => handleRatingTypeChange('thumbs_down')}
                           >
                             <ThumbsDown className="w-5 h-5 mb-1" />
-                            <span className="text-xs">Didn't Like</span>
+                            <span className="text-xs">Not for me</span>
                           </Button>
                           <Button
-                            variant={currentItem.rating && currentItem.rating >= 5 && currentItem.rating <= 7 ? 'default' : 'outline'}
+                            variant={currentItem.ratingType === 'thumbs_up' ? 'default' : 'outline'}
                             className="flex-col h-auto py-3"
-                            onClick={() => handleRatingChange(6)}
-                          >
-                            <div className="w-5 h-5 mb-1 flex items-center justify-center">👍</div>
-                            <span className="text-xs">It's Good</span>
-                          </Button>
-                          <Button
-                            variant={currentItem.rating && currentItem.rating >= 8 ? 'default' : 'outline'}
-                            className="flex-col h-auto py-3"
-                            onClick={() => handleRatingChange(9)}
+                            onClick={() => handleRatingTypeChange('thumbs_up')}
                           >
                             <ThumbsUp className="w-5 h-5 mb-1" />
-                            <span className="text-xs">Loved It!</span>
+                            <span className="text-xs">I like this</span>
                           </Button>
-                        </div>
-
-                        {/* Fine-tune with slider */}
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs text-gray-500">Fine-tune rating:</span>
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                              <span className="text-sm">{currentItem.rating}/10</span>
+                          <Button
+                            variant={currentItem.ratingType === 'two_thumbs_up' ? 'default' : 'outline'}
+                            className="flex-col h-auto py-3"
+                            onClick={() => handleRatingTypeChange('two_thumbs_up')}
+                          >
+                            <div className="flex gap-0.5 mb-1">
+                              <ThumbsUp className="w-4 h-4" />
+                              <ThumbsUp className="w-4 h-4" />
                             </div>
-                          </div>
-                          <Slider
-                            value={[currentItem.rating || 5]}
-                            onValueChange={(values) => handleRatingChange(values[0])}
-                            min={1}
-                            max={10}
-                            step={1}
-                            className="mb-1"
-                          />
+                            <span className="text-xs">Love this!</span>
+                          </Button>
                         </div>
                       </div>
 

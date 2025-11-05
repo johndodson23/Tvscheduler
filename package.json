@@ -1,6 +1,6 @@
 
   {
-      "name": "Confirm TMDB API Capabilities",
+      "name": "TV scheduler",
       "version": "0.1.0",
       "private": true,
       "dependencies": {

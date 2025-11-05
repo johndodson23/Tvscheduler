@@ -3,7 +3,7 @@ import { apiCall } from '../utils/api';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
-import { ChevronLeft, Heart, X, Sparkles, Tv, Film as FilmIcon } from 'lucide-react';
+import { ChevronLeft, ThumbsDown, ThumbsUp, Sparkles, Tv, Film as FilmIcon, Eye, Clock } from 'lucide-react';
 import { SearchBar } from './SearchBar';
 import { ShowDetailModal } from './ShowDetailModal';
 import { toast } from 'sonner@2.0.3';
@@ -19,8 +19,9 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
   const [queue, setQueue] = useState<any[]>([]);
   const [matches, setMatches] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<'thumbs_down' | 'thumbs_up' | 'two_thumbs_up' | null>(null);
   const [detailItem, setDetailItem] = useState<any>(null);
+  const [watchedStatus, setWatchedStatus] = useState<'watched' | 'not_seen' | 'want_to_watch'>('not_seen');
 
   useEffect(() => {
     loadGroupQueue();
@@ -96,11 +97,11 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
     }
   };
 
-  const handleSwipe = async (direction: 'left' | 'right') => {
+  const handleSwipe = async (ratingType: 'thumbs_down' | 'thumbs_up' | 'two_thumbs_up') => {
     if (currentIndex >= queue.length) return;
 
     const item = queue[currentIndex];
-    setSwipeDirection(direction);
+    setSwipeDirection(ratingType);
 
     try {
       const data = await apiCall(`/groups/${group.id}/swipe`, {
@@ -108,7 +109,8 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
         body: JSON.stringify({
           itemId: item.id,
           itemType: item.type,
-          direction,
+          ratingType,
+          watchedStatus,
         }),
       });
 
@@ -121,6 +123,7 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
       setTimeout(() => {
         setCurrentIndex(currentIndex + 1);
         setSwipeDirection(null);
+        setWatchedStatus('not_seen'); // Reset to default
       }, 300);
     } catch (error) {
       console.error('Error recording swipe:', error);
@@ -241,8 +244,8 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
                       animate={{
                         scale: 1,
                         opacity: 1,
-                        x: swipeDirection === 'left' ? -300 : swipeDirection === 'right' ? 300 : 0,
-                        rotate: swipeDirection === 'left' ? -20 : swipeDirection === 'right' ? 20 : 0,
+                        x: swipeDirection === 'thumbs_down' ? -300 : (swipeDirection === 'thumbs_up' || swipeDirection === 'two_thumbs_up') ? 300 : 0,
+                        rotate: swipeDirection === 'thumbs_down' ? -20 : (swipeDirection === 'thumbs_up' || swipeDirection === 'two_thumbs_up') ? 20 : 0,
                       }}
                       transition={{ duration: 0.3 }}
                       className="bg-white rounded-xl shadow-xl overflow-hidden"
@@ -270,21 +273,78 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
                 </AnimatePresence>
               </div>
 
-              <div className="flex justify-center gap-6">
-                <button
-                  onClick={() => handleSwipe('left')}
-                  disabled={!!swipeDirection}
-                  className="w-16 h-16 rounded-full bg-white border-2 border-red-500 text-red-500 flex items-center justify-center shadow-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                >
-                  <X className="w-8 h-8" />
-                </button>
-                <button
-                  onClick={() => handleSwipe('right')}
-                  disabled={!!swipeDirection}
-                  className="w-16 h-16 rounded-full bg-white border-2 border-green-500 text-green-500 flex items-center justify-center shadow-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-                >
-                  <Heart className="w-8 h-8" />
-                </button>
+              <div className="space-y-4">
+                {/* Watched Status Toggle */}
+                <div className="flex justify-center gap-2 bg-white rounded-lg p-2 shadow-sm">
+                  <button
+                    onClick={() => setWatchedStatus('watched')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                      watchedStatus === 'watched'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span className="text-sm">Watched</span>
+                  </button>
+                  <button
+                    onClick={() => setWatchedStatus('not_seen')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                      watchedStatus === 'not_seen'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-sm">Not Seen</span>
+                  </button>
+                  <button
+                    onClick={() => setWatchedStatus('want_to_watch')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                      watchedStatus === 'want_to_watch'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm">Want to Watch</span>
+                  </button>
+                </div>
+
+                {/* Rating Buttons */}
+                <div className="flex justify-center gap-4">
+                  <button
+                    onClick={() => handleSwipe('thumbs_down')}
+                    disabled={!!swipeDirection}
+                    className="w-16 h-16 rounded-full bg-white border-2 border-red-500 text-red-500 flex items-center justify-center shadow-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                  >
+                    <ThumbsDown className="w-7 h-7" />
+                  </button>
+                  <button
+                    onClick={() => handleSwipe('thumbs_up')}
+                    disabled={!!swipeDirection}
+                    className="w-16 h-16 rounded-full bg-white border-2 border-green-500 text-green-500 flex items-center justify-center shadow-lg hover:bg-green-50 transition-colors disabled:opacity-50"
+                  >
+                    <ThumbsUp className="w-7 h-7" />
+                  </button>
+                  <button
+                    onClick={() => handleSwipe('two_thumbs_up')}
+                    disabled={!!swipeDirection}
+                    className="w-20 h-16 rounded-full bg-white border-2 border-purple-600 text-purple-600 flex items-center justify-center shadow-lg hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  >
+                    <div className="flex gap-0.5">
+                      <ThumbsUp className="w-6 h-6" />
+                      <ThumbsUp className="w-6 h-6" />
+                    </div>
+                  </button>
+                </div>
+
+                {/* Button Labels */}
+                <div className="flex justify-center gap-4 text-xs text-gray-600">
+                  <div className="w-16 text-center">Not for me</div>
+                  <div className="w-16 text-center">I like this</div>
+                  <div className="w-20 text-center">Love this!</div>
+                </div>
               </div>
 
               <div className="text-center mt-6 text-sm text-gray-500">
@@ -339,9 +399,45 @@ export function GroupDetailScreen({ group, onBack }: GroupDetailScreenProps) {
                         <div className="text-sm text-gray-500 mb-2">
                           {item.type === 'movie' ? 'Movie' : 'TV Show'}
                         </div>
-                        <div className="text-xs text-green-700 bg-green-100 inline-block px-2 py-1 rounded">
+                        <div className="text-xs text-green-700 bg-green-100 inline-block px-2 py-1 rounded mb-2">
                           Everyone wants to watch this!
                         </div>
+                        
+                        {/* Show who has watched it */}
+                        {match.userDetails && (
+                          <div className="mt-2 pt-2 border-t border-green-200">
+                            <div className="text-xs text-gray-600 mb-1">Watch Status:</div>
+                            <div className="flex flex-wrap gap-2">
+                              {group.memberDetails.map((member: any) => {
+                                const userDetail = match.userDetails[member.id];
+                                if (!userDetail) return null;
+                                
+                                const status = userDetail.watchedStatus;
+                                const isHighRating = userDetail.ratingType === 'two_thumbs_up';
+                                
+                                const statusConfig = {
+                                  watched: { bg: 'bg-purple-100', text: 'text-purple-700', icon: Eye },
+                                  not_seen: { bg: 'bg-gray-100', text: 'text-gray-700', icon: Sparkles },
+                                  want_to_watch: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Clock }
+                                };
+                                
+                                const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.not_seen;
+                                const Icon = config.icon;
+                                
+                                return (
+                                  <div
+                                    key={member.id}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${config.bg} ${config.text}`}
+                                  >
+                                    <Icon className="w-3 h-3" />
+                                    <span>{member.name}</span>
+                                    {isHighRating && <span className="ml-0.5">💜</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Card>

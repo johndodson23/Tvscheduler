@@ -42,9 +42,18 @@ export function ScheduleScreen() {
   const loadData = async () => {
     try {
       const [showsData, scheduleData, watchListData] = await Promise.all([
-        apiCall('/my-shows'),
-        apiCall('/schedule'),
-        apiCall('/watch-list')
+        apiCall('/my-shows').catch(err => {
+          console.error('Error loading my-shows:', err);
+          return { shows: [] };
+        }),
+        apiCall('/schedule').catch(err => {
+          console.error('Error loading schedule:', err);
+          return { schedule: [] };
+        }),
+        apiCall('/watch-list').catch(err => {
+          console.error('Error loading watch-list:', err);
+          return { episodes: [] };
+        })
       ]);
       setMyShows(showsData.shows);
       setSchedule(scheduleData.schedule);
@@ -103,7 +112,7 @@ export function ScheduleScreen() {
         // Add ALL seasons to My Shows (both tracked and watched)
         for (const seasonNum of allSeasonNums) {
           try {
-            await apiCall('/my-shows', {
+            const result = await apiCall('/my-shows', {
               method: 'POST',
               body: JSON.stringify({
                 id: item.id,
@@ -113,6 +122,9 @@ export function ScheduleScreen() {
                 seasonName: item.seasonNames?.[seasonNum],
               }),
             });
+            if (result.alreadyExists) {
+              console.log(`Season ${seasonNum} already tracked, skipping`);
+            }
           } catch (err: any) {
             console.log(`Error adding season ${seasonNum}:`, err);
           }
@@ -198,9 +210,10 @@ export function ScheduleScreen() {
       }
       // Handle simple multiple seasons (old behavior)
       else if (item.multipleSeasons && Array.isArray(item.multipleSeasons)) {
+        let addedCount = 0;
         for (const seasonNum of item.multipleSeasons) {
           try {
-            await apiCall('/my-shows', {
+            const result = await apiCall('/my-shows', {
               method: 'POST',
               body: JSON.stringify({
                 id: item.id,
@@ -210,15 +223,22 @@ export function ScheduleScreen() {
                 seasonName: item.seasonNames?.[seasonNum],
               }),
             });
+            if (!result.alreadyExists) {
+              addedCount++;
+            }
           } catch (err: any) {
             // Log but continue with other seasons
             console.log(`Error adding season ${seasonNum}:`, err);
           }
         }
-        toast.success(`Added ${item.multipleSeasons.length} season${item.multipleSeasons.length !== 1 ? 's' : ''} to your shows!`);
+        if (addedCount > 0) {
+          toast.success(`Added ${addedCount} season${addedCount !== 1 ? 's' : ''} to your shows!`);
+        } else {
+          toast.info('All selected seasons are already in your shows');
+        }
       } else {
         // Single season add
-        await apiCall('/my-shows', {
+        const result = await apiCall('/my-shows', {
           method: 'POST',
           body: JSON.stringify({
             id: item.id,
@@ -228,8 +248,14 @@ export function ScheduleScreen() {
             seasonName: item.seasonName,
           }),
         });
-        const seasonText = item.seasonName ? ` (${item.seasonName})` : '';
-        toast.success(`Added to your shows!${seasonText}`);
+        
+        if (result.alreadyExists) {
+          const seasonText = item.seasonName ? ` (${item.seasonName})` : '';
+          toast.info(`This show${seasonText} is already in your list`);
+        } else {
+          const seasonText = item.seasonName ? ` (${item.seasonName})` : '';
+          toast.success(`Added to your shows!${seasonText}`);
+        }
       }
       loadData();
     } catch (error: any) {

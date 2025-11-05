@@ -75,12 +75,14 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
     watched: { seasonNumber: number; rating: number }[];
   }) => {
     const seasonNames: { [key: number]: string } = {};
-    [...config.tracked, ...config.watched.map(w => w.seasonNumber)].forEach(seasonNum => {
-      const season = details?.seasons.find((s: any) => s.season_number === seasonNum);
-      if (season) {
-        seasonNames[seasonNum] = season.name;
-      }
-    });
+    if (details?.seasons) {
+      [...config.tracked, ...config.watched.map(w => w.seasonNumber)].forEach(seasonNum => {
+        const season = details?.seasons?.find((s: any) => s.season_number === seasonNum);
+        if (season) {
+          seasonNames[seasonNum] = season.name;
+        }
+      });
+    }
     
     const itemToAdd = {
       ...item,
@@ -117,12 +119,12 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-lg h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="sr-only">
+        <div className="sr-only">
           <DialogTitle>{item.title}</DialogTitle>
           <DialogDescription>
             Details and information about {item.title}
           </DialogDescription>
-        </DialogHeader>
+        </div>
         {loading ? (
           <div className="flex items-center justify-center h-96">
             <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
@@ -186,7 +188,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                 </div>
 
                 {/* Quick Tips for TV Shows */}
-                {item.type === 'tv' && details?.seasons && details.seasons.filter((s: any) => s.season_number > 0).length > 1 && !multiSelectMode && (
+                {item.type === 'tv' && details?.seasons && (details.seasons.filter((s: any) => s.season_number > 0).length > 1) && !multiSelectMode && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-start gap-2">
                       <div className="text-blue-700 text-xs leading-relaxed">
@@ -237,7 +239,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <h3 className="text-sm">Select Season{multiSelectMode ? 's' : ''}</h3>
-                        {!multiSelectMode && details.seasons.filter((s: any) => s.season_number > 0).length > 1 && (
+                        {!multiSelectMode && details?.seasons && (details.seasons.filter((s: any) => s.season_number > 0).length > 1) && (
                           <p className="text-xs text-gray-500 mt-0.5">
                             💡 Want to add multiple? Click "Select Multiple" →
                           </p>
@@ -280,8 +282,8 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {details.seasons
-                              .filter((season: any) => season.season_number > 0)
+                            {details?.seasons
+                              ?.filter((season: any) => season.season_number > 0)
                               .map((season: any) => {
                                 const isCurrent = isSeasonCurrent(season);
                                 return (
@@ -300,7 +302,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                               })}
                           </SelectContent>
                         </Select>
-                        {isSeasonCurrent(details.seasons.find((s: any) => s.season_number === selectedSeason)) && (
+                        {details?.seasons && isSeasonCurrent(details.seasons.find((s: any) => s.season_number === selectedSeason)) && (
                           <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
                             Current season - new episodes will be tracked
@@ -310,8 +312,8 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                     ) : (
                       <>
                         <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                          {details.seasons
-                            .filter((season: any) => season.season_number > 0)
+                          {details?.seasons
+                            ?.filter((season: any) => season.season_number > 0)
                             .map((season: any) => {
                               const isCurrent = isSeasonCurrent(season);
                               const isSelected = selectedSeasons.includes(season.season_number);
@@ -371,7 +373,7 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
                                 {/* Preview of selected seasons */}
                                 <div className="flex flex-wrap gap-1">
                                   {selectedSeasons.slice(0, 5).map(num => {
-                                    const season = details.seasons.find((s: any) => s.season_number === num);
+                                    const season = details?.seasons?.find((s: any) => s.season_number === num);
                                     return (
                                       <span key={num} className="inline-block px-2 py-0.5 bg-white/80 text-purple-800 text-[10px] rounded-full border border-purple-300">
                                         S{num}
@@ -495,16 +497,19 @@ export function ShowDetailModal({ item, onClose, onConfirmAdd, actionButtonText 
       </DialogContent>
 
       {/* Multi-Season Configuration Modal */}
-      {showMultiSeasonConfig && (
+      {showMultiSeasonConfig && details?.seasons && (
         <MultiSeasonActionModal
           show={item}
-          selectedSeasons={selectedSeasons.map(num => {
-            const season = details?.seasons.find((s: any) => s.season_number === num);
-            return {
-              ...season,
-              isCurrent: isSeasonCurrent(season)
-            };
-          })}
+          selectedSeasons={selectedSeasons
+            .map(num => {
+              const season = details.seasons.find((s: any) => s.season_number === num);
+              if (!season) return null;
+              return {
+                ...season,
+                isCurrent: isSeasonCurrent(season)
+              };
+            })
+            .filter(Boolean)}
           onClose={() => setShowMultiSeasonConfig(false)}
           onConfirm={(config) => {
             console.log('Config confirmed, closing modal and processing...');

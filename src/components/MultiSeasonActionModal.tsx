@@ -89,9 +89,13 @@ export function MultiSeasonActionModal({
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="p-6 pb-4 border-b-2 border-purple-200 bg-purple-50 flex-shrink-0">
-          <DialogTitle className="text-xl">Configure {configs.length} Season{configs.length !== 1 ? 's' : ''}</DialogTitle>
-          <DialogDescription className="space-y-2">
+        <div className="sr-only">
+          <DialogTitle>Configure {configs.length} Season{configs.length !== 1 ? 's' : ''}</DialogTitle>
+          <DialogDescription>Configure multiple seasons with ratings and watch status</DialogDescription>
+        </div>
+        <div className="p-6 pb-4 border-b-2 border-purple-200 bg-purple-50 flex-shrink-0">
+          <h2 className="text-xl">Configure {configs.length} Season{configs.length !== 1 ? 's' : ''}</h2>
+          <div className="space-y-2">
             <div className="text-sm">For each season, choose what to do:</div>
             <div className="grid grid-cols-3 gap-2 text-xs mt-2">
               <div className="p-2 bg-white rounded border border-gray-200">
@@ -107,8 +111,8 @@ export function MultiSeasonActionModal({
                 <div className="text-gray-600">Seen + track new</div>
               </div>
             </div>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </div>
 
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-6 space-y-4">
